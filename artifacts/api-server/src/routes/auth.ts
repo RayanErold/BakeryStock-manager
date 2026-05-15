@@ -7,8 +7,11 @@ import { eq } from "drizzle-orm";
 const router = Router();
 
 const requireAuth = async (req: any, res: any, next: any) => {
-  if (!process.env.CLERK_SECRET_KEY) {
-    // Dev mode: only accept explicit X-Dev-User-Id header (set by frontend after login selection)
+  // Dev-mode bypass: only active when CLERK_SECRET_KEY is absent AND we are
+  // not in a production environment. This prevents header-spoofing if the
+  // key is accidentally unset in a deployed environment.
+  const isDevMode = !process.env.CLERK_SECRET_KEY && process.env.NODE_ENV !== "production";
+  if (isDevMode) {
     const devUserId = req.headers["x-dev-user-id"] as string | undefined;
     if (!devUserId) {
       return res.status(401).json({ error: "Unauthorized: no session (dev mode — select a user in the login page)" });
@@ -70,7 +73,9 @@ router.get("/auth/me", requireAuth, async (req: any, res: any) => {
 
 router.post("/auth/sync", requireAuth, async (req: any, res: any) => {
   try {
-    const { clerkId, name, email } = req.body;
+    // Use the authenticated identity, not body-supplied clerkId, to prevent spoofing
+    const clerkId = req.clerkUserId as string;
+    const { name, email } = req.body;
 
     const existing = await db
       .select()

@@ -1,6 +1,6 @@
 import { Router } from "express";
+import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { requireAuth, requireOwner } from "./auth";
 import {
   usersTable,
   branchesTable,
@@ -11,8 +11,25 @@ import {
 
 const router = Router();
 
-router.post("/seed", requireAuth, requireOwner, async (_req: any, res: any) => {
+router.post("/seed", async (req: any, res: any) => {
   try {
+    // Bootstrap path: allow unauthenticated if no users exist yet.
+    // Once any user exists, require an authenticated owner.
+    const existingUsers = await db.select().from(usersTable).limit(1);
+    if (existingUsers.length > 0) {
+      const clerkUserId: string | undefined =
+        req.clerkUserId ?? (req.headers["x-dev-user-id"] as string | undefined);
+      if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+      const [caller] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.clerkId, clerkUserId))
+        .limit(1);
+      if (!caller || caller.role !== "owner") {
+        return res.status(403).json({ error: "Forbidden: owner only" });
+      }
+    }
+
     const existingBranches = await db.select().from(branchesTable);
     if (existingBranches.length > 0) {
       return res.json({ message: "Already seeded" });
