@@ -7,7 +7,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, Pencil, Trash2, AlertTriangle, QrCode, ScanLine } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, AlertTriangle, QrCode, ScanLine, Upload, Download, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import QRCodePrintDialog from "@/components/QRCodePrintDialog";
@@ -44,6 +44,14 @@ interface Branch {
   city: string;
 }
 
+interface CsvPreviewRow {
+  rawItemId: string;
+  rawItemName: string;
+  barcode: string;
+  matched: InventoryItem | null;
+  ambiguous: boolean;
+}
+
 const CATEGORIES = ["Ingrédients de base", "Produits laitiers", "Huiles & Graisses", "Emballages", "Autre"];
 const UNITS = ["kg", "g", "bags", "sacks", "liters", "ml", "boxes", "pieces", "trays", "units"];
 
@@ -56,6 +64,103 @@ const emptyForm = {
   branchId: "",
   barcode: "",
 };
+
+function parseCSVFields(line: string): string[] {
+  const fields: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '"') {
+      let field = "";
+      i++;
+      while (i < line.length) {
+        if (line[i] === '"' && line[i + 1] === '"') {
+          field += '"';
+          i += 2;
+        } else if (line[i] === '"') {
+          i++;
+          break;
+        } else {
+          field += line[i++];
+        }
+      }
+      fields.push(field);
+      if (line[i] === ",") i++;
+    } else {
+      const end = line.indexOf(",", i);
+      if (end === -1) {
+        fields.push(line.slice(i).trim());
+        break;
+      } else {
+        fields.push(line.slice(i, end).trim());
+        i = end + 1;
+      }
+    }
+  }
+  return fields;
+}
+
+function parseCSV(text: string, items: InventoryItem[]): CsvPreviewRow[] | null {
+  const bom = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const lines = bom.trim().split(/\r?\n/);
+  if (lines.length < 2) return null;
+
+  const headers = parseCSVFields(lines[0]).map((h) => h.toLowerCase());
+
+  const idCol = headers.findIndex((h) => h === "item_id" || h === "id");
+  const nameCol = headers.findIndex((h) => h === "item_name" || h === "name");
+  const barcodeCol = headers.findIndex((h) => h === "barcode");
+
+  if (barcodeCol === -1 || (idCol === -1 && nameCol === -1)) return null;
+
+  const rows: CsvPreviewRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cols = parseCSVFields(line);
+
+    const rawItemId = idCol !== -1 ? (cols[idCol] ?? "") : "";
+    const rawItemName = nameCol !== -1 ? (cols[nameCol] ?? "") : "";
+    const barcode = (cols[barcodeCol] ?? "").trim();
+
+    if (!barcode) continue;
+
+    let matched: InventoryItem | null = null;
+    let ambiguous = false;
+
+    if (rawItemId) {
+      const numId = parseInt(rawItemId, 10);
+      if (!isNaN(numId)) {
+        matched = items.find((item) => item.id === numId) ?? null;
+      }
+    }
+
+    if (!matched && rawItemName) {
+      const nameMatches = items.filter(
+        (item) => item.name.toLowerCase() === rawItemName.toLowerCase(),
+      );
+      if (nameMatches.length === 1) {
+        matched = nameMatches[0];
+      } else if (nameMatches.length > 1) {
+        ambiguous = true;
+      }
+    }
+
+    rows.push({ rawItemId, rawItemName, barcode, matched, ambiguous });
+  }
+
+  return rows.length > 0 ? rows : null;
+}
+
+function downloadSampleCSV() {
+  const csv = "item_id,item_name,barcode\n1,Wheat Flour,1234567890123\n2,Sugar,9876543210987\n";
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "barcode_import_sample.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function InventoryPage() {
   const { lang } = useAppContext();
@@ -72,6 +177,11 @@ export default function InventoryPage() {
   const [qrItem, setQrItem] = useState<InventoryItem | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<number | null>(null);
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [csvPreview, setCsvPreview] = useState<CsvPreviewRow[] | null>(null);
+  const [csvFileName, setCsvFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -136,6 +246,19 @@ export default function InventoryPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const bulkBarcodeMutation = useMutation({
+    mutationFn: (updates: Array<{ id: number; barcode: string }>) =>
+      api.post<{ updated: number }>("/inventory/bulk-barcode", { updates }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["inventory"] });
+      toast.success(`${t(lang, "importSuccess")} (${result.updated})`);
+      setImportOpen(false);
+      setCsvPreview(null);
+      setCsvFileName("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const openCreate = () => {
     setEditItem(null);
     setForm({ ...emptyForm, branchId: user?.branchId ? String(user.branchId) : "" });
@@ -190,6 +313,44 @@ export default function InventoryPage() {
     toast.success(`${t(lang, "scanFoundPrefix")} ${found.name}`);
   }, [items, lang]);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const parsed = parseCSV(text, items);
+      if (!parsed) {
+        toast.error(t(lang, "csvParseError"));
+        setCsvPreview(null);
+        return;
+      }
+      setCsvPreview(parsed);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleConfirmImport = () => {
+    if (!csvPreview) return;
+    const matchedRows = csvPreview.filter((r) => r.matched !== null && !r.ambiguous);
+    if (matchedRows.length === 0) {
+      toast.error(t(lang, "noMatchedRows"));
+      return;
+    }
+    const updates = matchedRows.map((r) => ({ id: r.matched!.id, barcode: r.barcode }));
+    bulkBarcodeMutation.mutate(updates);
+  };
+
+  const handleImportDialogClose = (open: boolean) => {
+    if (!open) {
+      setCsvPreview(null);
+      setCsvFileName("");
+    }
+    setImportOpen(open);
+  };
+
   useEffect(() => {
     return () => {
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
@@ -206,6 +367,10 @@ export default function InventoryPage() {
   });
 
   const isLow = (item: InventoryItem) => Number(item.quantity) <= Number(item.minThreshold);
+
+  const matchedCount = csvPreview?.filter((r) => r.matched !== null && !r.ambiguous).length ?? 0;
+  const unmatchedCount = csvPreview?.filter((r) => r.matched === null && !r.ambiguous).length ?? 0;
+  const ambiguousCount = csvPreview?.filter((r) => r.ambiguous).length ?? 0;
 
   return (
     <div className="space-y-5 max-w-5xl mx-auto">
@@ -226,6 +391,17 @@ export default function InventoryPage() {
             <ScanLine className="w-4 h-4" />
             <span className="hidden sm:inline">{t(lang, "scanBarcode")}</span>
           </Button>
+          {isOwner && (
+            <Button
+              variant="outline"
+              onClick={() => setImportOpen(true)}
+              className="gap-2"
+              title={t(lang, "importBarcodes")}
+            >
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">{t(lang, "importBarcodes")}</span>
+            </Button>
+          )}
           <Button onClick={openCreate} className="gap-2">
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">{t(lang, "addItem")}</span>
@@ -476,6 +652,162 @@ export default function InventoryPage() {
             onClose={() => setScannerOpen(false)}
             label={t(lang, "scanToFind")}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Barcodes Dialog */}
+      <Dialog open={importOpen} onOpenChange={handleImportDialogClose}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              {t(lang, "importBarcodesTitle")}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <p className="text-sm text-muted-foreground">{t(lang, "importBarcodesDesc")}</p>
+
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={downloadSampleCSV}
+                className="gap-2 text-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {t(lang, "csvInstructions")}
+              </Button>
+            </div>
+
+            <div className="border-2 border-dashed border-muted-foreground/30 rounded-lg p-6 text-center space-y-3">
+              <Upload className="w-8 h-8 mx-auto text-muted-foreground/50" />
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  {csvFileName
+                    ? csvFileName
+                    : lang === "fr"
+                    ? "Aucun fichier sélectionné"
+                    : "No file selected"}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {lang === "fr" ? "Choisir un fichier CSV" : "Choose CSV file"}
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+              </div>
+            </div>
+
+            {csvPreview && csvPreview.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 text-sm flex-wrap">
+                  <span className="flex items-center gap-1.5 text-green-700 font-medium">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {matchedCount} {t(lang, "matchedRows")}
+                  </span>
+                  {unmatchedCount > 0 && (
+                    <span className="flex items-center gap-1.5 text-destructive font-medium">
+                      <XCircle className="w-4 h-4" />
+                      {unmatchedCount} {t(lang, "unmatchedRows")}
+                    </span>
+                  )}
+                  {ambiguousCount > 0 && (
+                    <span className="flex items-center gap-1.5 text-amber-600 font-medium">
+                      <AlertTriangle className="w-4 h-4" />
+                      {ambiguousCount} {lang === "fr" ? "nom ambigu (utiliser item_id)" : "ambiguous name (use item_id)"}
+                    </span>
+                  )}
+                </div>
+
+                <div className="rounded-md border overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                            {lang === "fr" ? "Ligne CSV" : "CSV Row"}
+                          </th>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                            {t(lang, "barcode")}
+                          </th>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                            {lang === "fr" ? "Article correspondant" : "Matched Item"}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {csvPreview.map((row, i) => (
+                          <tr
+                            key={i}
+                            className={
+                              row.matched
+                                ? "bg-background"
+                                : row.ambiguous
+                                ? "bg-amber-50/40"
+                                : "bg-red-50/40"
+                            }
+                          >
+                            <td className="px-3 py-2 text-muted-foreground font-mono text-xs">
+                              {row.rawItemId
+                                ? `ID: ${row.rawItemId}`
+                                : row.rawItemName
+                                ? row.rawItemName
+                                : "—"}
+                            </td>
+                            <td className="px-3 py-2 font-mono text-xs">{row.barcode}</td>
+                            <td className="px-3 py-2">
+                              {row.matched ? (
+                                <span className="flex items-center gap-1.5 text-green-700">
+                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                  {row.matched.name}
+                                </span>
+                              ) : row.ambiguous ? (
+                                <span className="flex items-center gap-1.5 text-amber-600">
+                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                  {lang === "fr"
+                                    ? "Plusieurs articles portent ce nom — utilisez item_id"
+                                    : "Multiple items share this name — use item_id"}
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1.5 text-destructive">
+                                  <XCircle className="w-3.5 h-3.5 shrink-0" />
+                                  {t(lang, "unmatchedRows")}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="mt-4 shrink-0">
+            <Button variant="outline" onClick={() => handleImportDialogClose(false)}>
+              {t(lang, "cancel")}
+            </Button>
+            <Button
+              onClick={handleConfirmImport}
+              disabled={!csvPreview || matchedCount === 0 || bulkBarcodeMutation.isPending}
+              className="gap-2"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {t(lang, "confirmImport")}
+              {matchedCount > 0 && ` (${matchedCount})`}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

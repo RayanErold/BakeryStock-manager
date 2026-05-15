@@ -144,6 +144,39 @@ router.get("/inventory/barcode/:code", requireAuth, async (req: AuthedRequest, r
   }
 });
 
+router.post("/inventory/bulk-barcode", requireAuth, async (req: AuthedRequest, res: Response) => {
+  try {
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+    if (currentUser.role !== "owner") {
+      return res.status(403).json({ error: "Forbidden: only owners can bulk-assign barcodes" });
+    }
+
+    const { updates } = req.body as { updates: Array<{ id: number; barcode: string | null }> };
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ error: "updates array is required and must not be empty" });
+    }
+
+    const now = new Date();
+    let updatedCount = 0;
+    await db.transaction(async (tx) => {
+      for (const { id, barcode } of updates) {
+        const result = await tx
+          .update(inventoryItemsTable)
+          .set({ barcode: barcode?.trim() || null, updatedAt: now })
+          .where(eq(inventoryItemsTable.id, id))
+          .returning();
+        if (result.length > 0) updatedCount++;
+      }
+    });
+
+    return res.json({ updated: updatedCount });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
+  }
+});
+
 router.post("/inventory", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const currentUser = await getCurrentUser(req.clerkUserId);
