@@ -5,6 +5,18 @@ import { eq, and, ilike } from "drizzle-orm";
 import { requireAuth } from "./auth";
 import type { AuthedRequest, Response } from "../types/express";
 
+function isDuplicateBarcodeError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: string }).code === "23505" &&
+    "constraint" in err &&
+    typeof (err as { constraint: string }).constraint === "string" &&
+    (err as { constraint: string }).constraint.includes("barcode")
+  );
+}
+
 const router = Router();
 
 type UnitType = "kg" | "g" | "bags" | "sacks" | "liters" | "ml" | "boxes" | "pieces" | "trays" | "units";
@@ -172,6 +184,9 @@ router.post("/inventory/bulk-barcode", requireAuth, async (req: AuthedRequest, r
 
     return res.json({ updated: updatedCount });
   } catch (err: unknown) {
+    if (isDuplicateBarcodeError(err)) {
+      return res.status(409).json({ error: "One or more barcodes already exist in the same branch" });
+    }
     const msg = err instanceof Error ? err.message : "Internal server error";
     return res.status(500).json({ error: msg });
   }
@@ -215,6 +230,9 @@ router.post("/inventory", requireAuth, async (req: AuthedRequest, res: Response)
       isLowStock: parseFloat(item.quantity) <= parseFloat(item.minThreshold),
     });
   } catch (err: unknown) {
+    if (isDuplicateBarcodeError(err)) {
+      return res.status(409).json({ error: "A item with that barcode already exists in this branch" });
+    }
     const msg = err instanceof Error ? err.message : "Internal server error";
     return res.status(500).json({ error: msg });
   }
@@ -302,6 +320,9 @@ router.put("/inventory/:id", requireAuth, async (req: AuthedRequest, res: Respon
       isLowStock: parseFloat(item.quantity) <= parseFloat(item.minThreshold),
     });
   } catch (err: unknown) {
+    if (isDuplicateBarcodeError(err)) {
+      return res.status(409).json({ error: "A item with that barcode already exists in this branch" });
+    }
     const msg = err instanceof Error ? err.message : "Internal server error";
     return res.status(500).json({ error: msg });
   }
