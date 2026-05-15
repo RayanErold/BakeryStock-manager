@@ -62,7 +62,7 @@ const MOVEMENT_TYPES = [
 const typeColors: Record<string, string> = {
   stock_in: "text-emerald-700 bg-emerald-50 border-emerald-200",
   used_in_production: "text-amber-700 bg-amber-50 border-amber-200",
-  sold: "text-blue-700 bg-blue-50 border-blue-200",
+  sold: "text-teal-700 bg-teal-50 border-teal-200",
   damaged: "text-red-700 bg-red-50 border-red-200",
   missing_lost: "text-orange-700 bg-orange-50 border-orange-200",
   returned: "text-purple-700 bg-purple-50 border-purple-200",

@@ -11,6 +11,11 @@ import { requireAuth } from "./auth";
 
 const router = Router();
 
+async function getCurrentUser(clerkUserId: string) {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkUserId)).limit(1);
+  return user ?? null;
+}
+
 function toCSV(rows: Record<string, any>[], headers: string[]): string {
   const csvRows = [headers.join(",")];
   for (const row of rows) {
@@ -25,14 +30,27 @@ function toCSV(rows: Record<string, any>[], headers: string[]): string {
 
 router.get(["/reports", "/reports/download"], requireAuth, async (req: any, res: any) => {
   try {
-    const { type, format, branchId, dateFrom, dateTo } = req.query;
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+
+    // Staff are restricted to their own branch; deny if unassigned
+    if (currentUser.role === "staff" && !currentUser.branchId) {
+      return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
+    }
+
+    const { type, format, branchId: queryBranchId, dateFrom, dateTo } = req.query;
 
     if (!type || !format) {
       return res.status(400).json({ error: "type and format are required" });
     }
 
+    // Resolve effective branch: staff always scoped to their branch
+    const effectiveBranchId = currentUser.role === "staff"
+      ? currentUser.branchId!
+      : (queryBranchId ? parseInt(queryBranchId as string) : null);
+
     const conditions: any[] = [];
-    if (branchId) conditions.push(eq(stockMovementsTable.branchId, parseInt(branchId as string)));
+    if (effectiveBranchId) conditions.push(eq(stockMovementsTable.branchId, effectiveBranchId));
     if (dateFrom) conditions.push(gte(stockMovementsTable.createdAt, new Date(dateFrom as string)));
     if (dateTo) {
       const end = new Date(dateTo as string);

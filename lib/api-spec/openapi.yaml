@@ -286,6 +286,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryItem"
 
+  /inventory/low-stock:
+    get:
+      operationId: listLowStockItems
+      tags: [inventory]
+      summary: List inventory items at or below their minimum threshold
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Low-stock items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LowStockItem"
+
   /inventory/{id}:
     get:
       operationId: getInventoryItem
@@ -403,6 +423,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StockMovement"
+    put:
+      operationId: updateStockMovement
+      tags: [movements]
+      summary: Update a stock movement note (owner only)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStockMovementRequest"
+      responses:
+        "200":
+          description: Updated movement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockMovement"
+    delete:
+      operationId: deleteStockMovement
+      tags: [movements]
+      summary: Delete a stock movement (owner only)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deleted
 
   /audit-logs:
     get:
@@ -540,7 +588,7 @@ components:
 
     UnitType:
       type: string
-      enum: [kg, bags, liters, boxes, pieces, trays]
+      enum: [kg, g, bags, sacks, liters, ml, boxes, pieces, trays, units]
 
     ReportType:
       type: string
@@ -835,6 +883,13 @@ components:
         - type
         - quantity
 
+    UpdateStockMovementRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          nullable: true
+
     AuditLog:
       type: object
       properties:
@@ -972,34 +1027,36 @@ components:
       properties:
         totalItems:
           type: integer
-        totalLowStock:
+        lowStockCount:
           type: integer
-        totalMissingToday:
+        missingToday:
           type: number
-        totalDamagedToday:
+        damagedToday:
           type: number
-        branchOverviews:
-          type: array
-          items:
-            $ref: "#/components/schemas/BranchOverview"
+        movementsToday:
+          type: integer
         recentMovements:
           type: array
           items:
             $ref: "#/components/schemas/RecentMovement"
-        lowStockAlerts:
+        lowStockItems:
           type: array
           items:
             $ref: "#/components/schemas/LowStockItem"
+        branchSummary:
+          type: array
+          items:
+            $ref: "#/components/schemas/BranchOverview"
         topUsedItems:
           type: array
           items:
             $ref: "#/components/schemas/TopUsedItem"
       required:
         - totalItems
-        - totalLowStock
-        - totalMissingToday
-        - totalDamagedToday
-        - branchOverviews
+        - lowStockCount
+        - missingToday
+        - damagedToday
+        - movementsToday
         - recentMovements
-        - lowStockAlerts
+        - lowStockItems
         - topUsedItems

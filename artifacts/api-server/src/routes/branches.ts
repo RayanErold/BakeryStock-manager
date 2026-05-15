@@ -1,13 +1,30 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { branchesTable, inventoryItemsTable, stockMovementsTable } from "@workspace/db";
+import { branchesTable, inventoryItemsTable, stockMovementsTable, usersTable } from "@workspace/db";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { requireAuth, requireOwner } from "./auth";
 
 const router = Router();
 
-router.get("/branches", requireAuth, async (_req: any, res: any) => {
+async function getCurrentUser(clerkUserId: string) {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkUserId)).limit(1);
+  return user ?? null;
+}
+
+router.get("/branches", requireAuth, async (req: any, res: any) => {
   try {
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+
+    // Staff only see their own branch; deny if unassigned
+    if (currentUser.role === "staff") {
+      if (!currentUser.branchId) {
+        return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
+      }
+      const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, currentUser.branchId)).limit(1);
+      return res.json(branch ? [branch] : []);
+    }
+
     const branches = await db.select().from(branchesTable).orderBy(branchesTable.name);
     return res.json(branches);
   } catch {
@@ -31,6 +48,16 @@ router.post("/branches", requireAuth, requireOwner, async (req: any, res: any) =
 router.get("/branches/:id", requireAuth, async (req: any, res: any) => {
   try {
     const id = parseInt(req.params.id);
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+
+    // Staff can only access their own branch
+    if (currentUser.role === "staff") {
+      if (!currentUser.branchId || currentUser.branchId !== id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
     const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, id)).limit(1);
     if (!branch) return res.status(404).json({ error: "Not found" });
     return res.json(branch);
@@ -68,6 +95,16 @@ router.delete("/branches/:id", requireAuth, requireOwner, async (req: any, res: 
 router.get("/branches/:id/stats", requireAuth, async (req: any, res: any) => {
   try {
     const id = parseInt(req.params.id);
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+
+    // Staff can only access stats for their own branch
+    if (currentUser.role === "staff") {
+      if (!currentUser.branchId || currentUser.branchId !== id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
     const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, id)).limit(1);
     if (!branch) return res.status(404).json({ error: "Not found" });
 

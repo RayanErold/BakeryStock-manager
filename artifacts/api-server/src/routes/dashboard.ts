@@ -11,10 +11,26 @@ import { requireAuth } from "./auth";
 
 const router = Router();
 
+async function getCurrentUser(clerkUserId: string) {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkUserId)).limit(1);
+  return user ?? null;
+}
+
 router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, res: any) => {
   try {
-    const { branchId } = req.query;
-    const branchFilter = branchId ? parseInt(branchId as string) : null;
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+
+    // Staff are restricted to their own branch — deny if unassigned
+    if (currentUser.role === "staff" && !currentUser.branchId) {
+      return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
+    }
+
+    // Branch filter: staff always scoped to their branch; owners may pass an optional ?branchId param
+    const { branchId: queryBranchId } = req.query;
+    const branchFilter = currentUser.role === "staff"
+      ? currentUser.branchId!
+      : (queryBranchId ? parseInt(queryBranchId as string) : null);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);

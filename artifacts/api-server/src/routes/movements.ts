@@ -183,4 +183,38 @@ router.post("/movements", requireAuth, async (req: any, res: any) => {
   }
 });
 
+router.put("/movements/:id", requireAuth, async (req: any, res: any) => {
+  try {
+    const id = parseInt(req.params.id);
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+    if (currentUser.role !== "owner") return res.status(403).json({ error: "Forbidden: owner only" });
+
+    const { note } = req.body;
+    const [updated] = await db
+      .update(stockMovementsTable)
+      .set({ note: note ?? null })
+      .where(eq(stockMovementsTable.id, id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/movements/:id", requireAuth, async (req: any, res: any) => {
+  try {
+    const id = parseInt(req.params.id);
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+    if (currentUser.role !== "owner") return res.status(403).json({ error: "Forbidden: owner only" });
+
+    await db.delete(stockMovementsTable).where(eq(stockMovementsTable.id, id));
+    return res.status(204).send();
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
