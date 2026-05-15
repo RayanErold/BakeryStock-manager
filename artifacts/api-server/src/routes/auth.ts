@@ -128,12 +128,17 @@ router.get("/auth/users", requireAuth, requireOwner, usersListHandler);
 
 router.post("/users", requireAuth, requireOwner, async (req: Request, res: Response) => {
   try {
-    const { name, email, role, branchId } = req.body as {
+    const { name, email, role, branchId, clerkId: bodyClerkId } = req.body as {
       name: string; email: string; role: "owner" | "staff"; branchId?: number;
+      /** Owner may supply the real Clerk user ID so the staff account can sign in via Clerk. */
+      clerkId?: string;
     };
+    // Use owner-supplied clerkId when provided (allows real Clerk accounts to be registered).
+    // Fallback placeholder is only for manual/demo records that don't map to a real Clerk user.
+    const clerkId = bodyClerkId?.trim() || `manual_${Date.now()}`;
     const [user] = await db
       .insert(usersTable)
-      .values({ clerkId: `manual_${Date.now()}`, name, email, role, branchId })
+      .values({ clerkId, name, email, role, branchId })
       .returning();
     return res.status(201).json({ ...user, branchName: null });
   } catch (err: unknown) {

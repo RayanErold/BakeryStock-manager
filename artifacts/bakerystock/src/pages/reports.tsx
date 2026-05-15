@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { getAuthToken } from "@/lib/authToken";
 import { useAppContext } from "@/contexts/AppContext";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -60,23 +61,12 @@ const reportLabels: Record<ReportType, { en: string; fr: string; descEn: string;
   },
 };
 
-function buildReportUrl(
-  reportType: ReportType,
-  format: ReportFormat,
-  branchId: string,
-  dateFrom: string,
-  dateTo: string,
-): string {
+/** Build auth headers using Clerk token when available, falling back to dev header. */
+async function reportAuthHeaders(): Promise<Record<string, string>> {
+  const token = await getAuthToken();
+  if (token) return { Authorization: `Bearer ${token}` };
   const devId = localStorage.getItem("dev_clerk_id");
-  const params = new URLSearchParams({
-    type: reportType,
-    format: format === "pdf" ? "html" : "csv",
-    ...(branchId !== "all" && { branchId }),
-    ...(dateFrom && { dateFrom }),
-    ...(dateTo && { dateTo }),
-    ...(devId && { "x-dev": devId }),
-  });
-  return `/api/reports?${params}`;
+  return devId ? { "X-Dev-User-Id": devId } : {};
 }
 
 export default function ReportsPage() {
@@ -93,21 +83,20 @@ export default function ReportsPage() {
     queryFn: () => api.get<Branch[]>("/branches"),
   });
 
-  const downloadReport = async () => {
+  const buildParams = (fmt: ReportFormat) =>
+    new URLSearchParams({
+      type: reportType,
+      format: fmt,
+      ...(branchId !== "all" && { branchId }),
+      ...(dateFrom && { dateFrom }),
+      ...(dateTo && { dateTo }),
+    });
+
+  const downloadCsv = async () => {
     setLoading(true);
     try {
-      const devId = localStorage.getItem("dev_clerk_id");
-      const params = new URLSearchParams({
-        type: reportType,
-        format: "csv",
-        ...(branchId !== "all" && { branchId }),
-        ...(dateFrom && { dateFrom }),
-        ...(dateTo && { dateTo }),
-      });
-
-      const res = await fetch(`/api/reports?${params}`, {
-        headers: devId ? { "X-Dev-User-Id": devId } : {},
-      });
+      const headers = await reportAuthHeaders();
+      const res = await fetch(`/api/reports?${buildParams("csv")}`, { headers });
       if (!res.ok) throw new Error(await res.text());
 
       const blob = await res.blob();
@@ -128,21 +117,12 @@ export default function ReportsPage() {
     }
   };
 
-  const previewForPdf = async () => {
+  const printPdf = async () => {
     setLoading(true);
     try {
-      const devId = localStorage.getItem("dev_clerk_id");
-      const params = new URLSearchParams({
-        type: reportType,
-        format: "html",
-        ...(branchId !== "all" && { branchId }),
-        ...(dateFrom && { dateFrom }),
-        ...(dateTo && { dateTo }),
-      });
-
-      const res = await fetch(`/api/reports?${params}`, {
-        headers: devId ? { "X-Dev-User-Id": devId } : {},
-      });
+      // Backend returns printable HTML for format=pdf (open in new tab → print dialog)
+      const headers = await reportAuthHeaders();
+      const res = await fetch(`/api/reports?${buildParams("pdf")}`, { headers });
       if (!res.ok) throw new Error(await res.text());
       const html = await res.text();
 
@@ -165,7 +145,7 @@ export default function ReportsPage() {
         <h1 className="text-2xl font-bold text-foreground">{t(lang, "reports")}</h1>
         <p className="text-muted-foreground text-sm mt-0.5">
           {lang === "fr"
-            ? "Exportez CSV ou imprimez en PDF"
+            ? "Exportez en CSV ou imprimez en PDF"
             : "Export to CSV or print as PDF"}
         </p>
       </div>
@@ -244,12 +224,12 @@ export default function ReportsPage() {
 
           <div className="flex gap-3 pt-2">
             {format === "csv" ? (
-              <Button onClick={downloadReport} disabled={loading} className="gap-2">
+              <Button onClick={downloadCsv} disabled={loading} className="gap-2">
                 <Download className="w-4 h-4" />
                 {t(lang, "download")} CSV
               </Button>
             ) : (
-              <Button onClick={previewForPdf} disabled={loading} className="gap-2">
+              <Button onClick={printPdf} disabled={loading} className="gap-2">
                 <FileText className="w-4 h-4" />
                 {lang === "fr" ? "Aperçu / Imprimer PDF" : "Preview / Print PDF"}
               </Button>
