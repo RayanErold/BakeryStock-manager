@@ -30,14 +30,17 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: Authed
 
     // Branch filter: staff always scoped to their branch; owners may pass an optional ?branchId param
     const { branchId: queryBranchId } = req.query as Record<string, string | undefined>;
-    const branchFilter = currentUser.role === "staff"
-      ? currentUser.branchId!
-      : (queryBranchId ? parseInt(queryBranchId as string) : null);
+    const branchFilter: number | null =
+      currentUser.role === "staff"
+        ? currentUser.branchId!
+        : queryBranchId
+        ? parseInt(queryBranchId)
+        : null;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Items query
+    // Items query — always branch-scoped for staff
     const allItems = branchFilter
       ? await db
           .select({
@@ -71,7 +74,7 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: Authed
     );
     const totalLowStock = lowStockAlerts.length;
 
-    // Today's movements (single query, build conditions upfront)
+    // Today's movements — branch-scoped for staff
     const todayConditions = branchFilter
       ? and(gte(stockMovementsTable.createdAt, today), eq(stockMovementsTable.branchId, branchFilter))
       : gte(stockMovementsTable.createdAt, today);
@@ -106,7 +109,7 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: Authed
       .filter((m: MovementRow) => m.type === "damaged")
       .reduce((sum: number, m: MovementRow) => sum + parseFloat(m.quantity ?? "0"), 0);
 
-    // Recent movements
+    // Recent movements — branch-scoped
     const recentConditions = branchFilter ? eq(stockMovementsTable.branchId, branchFilter) : undefined;
 
     const recentMovements = await db
@@ -128,17 +131,20 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: Authed
       .orderBy(desc(stockMovementsTable.createdAt))
       .limit(10);
 
-    const allBranches = await db.select().from(branchesTable);
+    // Branch summary — staff see only their own branch, owners see all
+    const visibleBranches = branchFilter
+      ? await db.select().from(branchesTable).where(eq(branchesTable.id, branchFilter))
+      : await db.select().from(branchesTable);
+
     const branchOverviews = await Promise.all(
-      allBranches.map(async (branch) => {
+      visibleBranches.map(async (branch) => {
         const branchItems = allItems.filter((i) => i.branchId === branch.id);
         const branchLowStock = branchItems.filter(
           (i) => parseFloat(i.quantity) <= parseFloat(i.minThreshold),
         ).length;
 
-        type TodayRow = (typeof todayMovements)[0];
         const branchMovementsToday = todayMovements.filter(
-          (m: TodayRow) => m.branchId === branch.id,
+          (m: MovementRow) => m.branchId === branch.id,
         ).length;
 
         return {
@@ -151,7 +157,11 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: Authed
       }),
     );
 
-    // Top consumption
+    // Top consumption — branch-scoped for staff
+    const productionConditions = branchFilter
+      ? and(eq(stockMovementsTable.type, "used_in_production"), eq(stockMovementsTable.branchId, branchFilter))
+      : eq(stockMovementsTable.type, "used_in_production");
+
     const allProductionMovements = await db
       .select({
         itemId: stockMovementsTable.itemId,
@@ -161,7 +171,7 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: Authed
       })
       .from(stockMovementsTable)
       .leftJoin(inventoryItemsTable, eq(stockMovementsTable.itemId, inventoryItemsTable.id))
-      .where(eq(stockMovementsTable.type, "used_in_production"));
+      .where(productionConditions);
 
     const usageMap: Record<number, { itemId: number; itemName: string; totalUsed: number; unit: string }> = {};
     for (const m of allProductionMovements) {
@@ -184,7 +194,7 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: Authed
       movementsToday: todayMovements.length,
       recentMovements,
       lowStockItems: lowStockAlerts,
-      branchSummary: allBranches.map((b) => {
+      branchSummary: visibleBranches.map((b) => {
         const overview = branchOverviews.find((o) => o.branchId === b.id);
         return {
           id: b.id,

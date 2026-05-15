@@ -16,16 +16,24 @@ import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { useAppContext } from "@/contexts/AppContext";
 import { t } from "@/lib/i18n";
+import { ClerkTokenBridge } from "@/components/ClerkTokenBridge";
 
-function handleSignOut() {
-  localStorage.removeItem("dev_clerk_id");
-  queryClient.clear();
-  window.location.reload();
-}
+const IS_CLERK_MODE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 function AppRoutes() {
   const { data: user, isLoading, isError } = useCurrentUser();
   const { lang } = useAppContext();
+
+  const handleSignOut = () => {
+    if (IS_CLERK_MODE) {
+      // Clerk manages session; redirect to Clerk's sign-out flow
+      window.location.href = "/?clerk_sign_out=1";
+    } else {
+      localStorage.removeItem("dev_clerk_id");
+      queryClient.clear();
+      window.location.reload();
+    }
+  };
 
   if (isLoading) {
     return (
@@ -60,16 +68,6 @@ function AppRoutes() {
         <Route path="/branches" component={BranchesPage} />
         <Route path="/staff" component={StaffPage} />
         <Route path="/reports" component={ReportsPage} />
-        <Route
-          path="/login"
-          component={() => (
-            <LoginPage
-              onLogin={() => {
-                queryClient.invalidateQueries({ queryKey: ["current-user"] });
-              }}
-            />
-          )}
-        />
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -80,6 +78,8 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppProvider>
+        {/* Register Clerk JWT getter only when running under ClerkProvider */}
+        {IS_CLERK_MODE && <ClerkTokenBridge />}
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AppRoutes />
         </WouterRouter>

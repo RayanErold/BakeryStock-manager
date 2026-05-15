@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SignIn } from "@clerk/react";
+
+const IS_CLERK_MODE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 interface DevUser {
   clerkId: string;
@@ -24,8 +27,9 @@ interface LoginPageProps {
   onLogin?: (clerkId: string) => void;
 }
 
-export default function LoginPage({ onLogin }: LoginPageProps) {
-  const { lang, setLang } = useAppContext();
+/** Dev-mode account picker — only shown when VITE_CLERK_PUBLISHABLE_KEY is absent. */
+function DevAccountPicker({ onLogin }: LoginPageProps) {
+  const { lang } = useAppContext();
   const [selected, setSelected] = useState<string | null>(null);
 
   const handleSignIn = () => {
@@ -36,8 +40,60 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">{t(lang, "signIn")}</CardTitle>
+        <CardDescription className="text-xs">
+          {lang === "fr"
+            ? "Sélectionnez un compte pour continuer (mode démo)"
+            : "Select an account to continue (demo mode)"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {DEV_USERS.map((user) => (
+          <button
+            key={user.clerkId}
+            onClick={() => setSelected(user.clerkId)}
+            className={cn(
+              "w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all",
+              selected === user.clerkId
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/40 bg-card",
+            )}
+          >
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="font-bold text-primary text-sm">{user.initials}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm text-foreground">{user.name}</div>
+            </div>
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-xs",
+                user.role === "owner"
+                  ? "border-amber-400 text-amber-700 bg-amber-50"
+                  : "border-stone-300 text-stone-600 bg-stone-50",
+              )}
+            >
+              {user.role === "owner" ? t(lang, "owner") : t(lang, "staffRole")}
+            </Badge>
+          </button>
+        ))}
+
+        <Button className="w-full mt-2" onClick={handleSignIn} disabled={!selected}>
+          {t(lang, "signIn")}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function LoginPage({ onLogin }: LoginPageProps) {
+  const { lang, setLang } = useAppContext();
+
+  return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
-      {/* Header */}
       <div className="absolute top-4 right-4">
         <Button
           variant="ghost"
@@ -62,57 +118,22 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           </div>
         </div>
 
-        {/* Dev mode user selector */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">{t(lang, "signIn")}</CardTitle>
-            <CardDescription className="text-xs">
-              {lang === "fr"
-                ? "Sélectionnez un compte pour continuer (mode démo)"
-                : "Select an account to continue (demo mode)"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {DEV_USERS.map((user) => (
-              <button
-                key={user.clerkId}
-                onClick={() => setSelected(user.clerkId)}
-                className={cn(
-                  "w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all",
-                  selected === user.clerkId
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/40 bg-card",
-                )}
-              >
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <span className="font-bold text-primary text-sm">{user.initials}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm text-foreground">{user.name}</div>
-                </div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-xs",
-                    user.role === "owner"
-                      ? "border-amber-400 text-amber-700 bg-amber-50"
-                      : "border-stone-300 text-stone-600 bg-stone-50",
-                  )}
-                >
-                  {user.role === "owner" ? t(lang, "owner") : t(lang, "staffRole")}
-                </Badge>
-              </button>
-            ))}
-
-            <Button
-              className="w-full mt-2"
-              onClick={handleSignIn}
-              disabled={!selected}
-            >
-              {t(lang, "signIn")}
-            </Button>
-          </CardContent>
-        </Card>
+        {IS_CLERK_MODE ? (
+          <div className="flex justify-center">
+            <SignIn
+              routing="hash"
+              signUpUrl="#/sign-up"
+              appearance={{
+                elements: {
+                  rootBox: "w-full",
+                  card: "shadow-none border border-border rounded-2xl bg-card",
+                },
+              }}
+            />
+          </div>
+        ) : (
+          <DevAccountPicker onLogin={onLogin} />
+        )}
       </div>
     </div>
   );

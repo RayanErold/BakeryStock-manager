@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
@@ -11,17 +12,20 @@ import {
 
 const router = Router();
 
-router.post("/seed", async (req: any, res: any) => {
+type MovementType = "stock_in" | "used_in_production" | "sold" | "damaged" | "missing_lost" | "returned";
+
+router.post("/seed", async (req: Request, res: Response) => {
   try {
     // Bootstrap path: allow unauthenticated if no users exist yet.
     // Once any user exists, require an authenticated owner.
-    const existingUsers = await db.select().from(usersTable).limit(1);
+    const existingUsers = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
     if (existingUsers.length > 0) {
       const clerkUserId: string | undefined =
-        req.clerkUserId ?? (req.headers["x-dev-user-id"] as string | undefined);
+        (req as Request & { clerkUserId?: string }).clerkUserId ??
+        (req.headers["x-dev-user-id"] as string | undefined);
       if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
       const [caller] = await db
-        .select()
+        .select({ role: usersTable.role })
         .from(usersTable)
         .where(eq(usersTable.clerkId, clerkUserId))
         .limit(1);
@@ -30,7 +34,7 @@ router.post("/seed", async (req: any, res: any) => {
       }
     }
 
-    const existingBranches = await db.select().from(branchesTable);
+    const existingBranches = await db.select({ id: branchesTable.id }).from(branchesTable).limit(1);
     if (existingBranches.length > 0) {
       return res.json({ message: "Already seeded" });
     }
@@ -46,9 +50,9 @@ router.post("/seed", async (req: any, res: any) => {
     const [owner, staff1, staff2] = await db
       .insert(usersTable)
       .values([
-        { clerkId: "seed_owner_001", name: "Pierre Fotso", email: "pierre@bakerstock.cm", role: "owner", branchId: douala.id },
-        { clerkId: "seed_staff_001", name: "Carine Biya", email: "carine@bakerystock.cm", role: "staff", branchId: douala.id },
-        { clerkId: "seed_staff_002", name: "Paul Eto", email: "paul@bakerystock.cm", role: "staff", branchId: yaounde.id },
+        { clerkId: "seed_owner_001", name: "Pierre Fotso", email: "pierre@bakerstock.cm", role: "owner" as const, branchId: douala.id },
+        { clerkId: "seed_staff_001", name: "Carine Biya", email: "carine@bakerystock.cm", role: "staff" as const, branchId: douala.id },
+        { clerkId: "seed_staff_002", name: "Paul Eto", email: "paul@bakerystock.cm", role: "staff" as const, branchId: yaounde.id },
       ])
       .returning();
 
@@ -56,23 +60,22 @@ router.post("/seed", async (req: any, res: any) => {
       .insert(inventoryItemsTable)
       .values([
         // Douala
-        { name: "Farine de blé", category: "Ingrédients de base", quantity: "250", unit: "kg", minThreshold: "50", branchId: douala.id },
-        { name: "Sucre", category: "Ingrédients de base", quantity: "80", unit: "kg", minThreshold: "20", branchId: douala.id },
-        { name: "Beurre", category: "Produits laitiers", quantity: "30", unit: "kg", minThreshold: "10", branchId: douala.id },
-        { name: "Oeufs", category: "Produits laitiers", quantity: "12", unit: "trays", minThreshold: "5", branchId: douala.id },
-        { name: "Levure", category: "Ingrédients de base", quantity: "5", unit: "kg", minThreshold: "2", branchId: douala.id },
-        { name: "Huile de palme", category: "Huiles & Graisses", quantity: "40", unit: "liters", minThreshold: "10", branchId: douala.id },
-        { name: "Sachets pain", category: "Emballages", quantity: "3", unit: "boxes", minThreshold: "10", branchId: douala.id },
+        { name: "Farine de blé", category: "Ingrédients de base", quantity: "250", unit: "kg" as const, minThreshold: "50", branchId: douala.id },
+        { name: "Sucre", category: "Ingrédients de base", quantity: "80", unit: "kg" as const, minThreshold: "20", branchId: douala.id },
+        { name: "Beurre", category: "Produits laitiers", quantity: "30", unit: "kg" as const, minThreshold: "10", branchId: douala.id },
+        { name: "Oeufs", category: "Produits laitiers", quantity: "12", unit: "trays" as const, minThreshold: "5", branchId: douala.id },
+        { name: "Levure", category: "Ingrédients de base", quantity: "5", unit: "kg" as const, minThreshold: "2", branchId: douala.id },
+        { name: "Huile de palme", category: "Huiles & Graisses", quantity: "40", unit: "liters" as const, minThreshold: "10", branchId: douala.id },
+        { name: "Sachets pain", category: "Emballages", quantity: "3", unit: "boxes" as const, minThreshold: "10", branchId: douala.id },
         // Yaoundé
-        { name: "Farine de blé", category: "Ingrédients de base", quantity: "180", unit: "kg", minThreshold: "50", branchId: yaounde.id },
-        { name: "Sucre", category: "Ingrédients de base", quantity: "15", unit: "kg", minThreshold: "20", branchId: yaounde.id },
-        { name: "Sel", category: "Ingrédients de base", quantity: "25", unit: "kg", minThreshold: "5", branchId: yaounde.id },
-        { name: "Lait en poudre", category: "Produits laitiers", quantity: "20", unit: "kg", minThreshold: "5", branchId: yaounde.id },
-        { name: "Levure", category: "Ingrédients de base", quantity: "1.5", unit: "kg", minThreshold: "2", branchId: yaounde.id },
+        { name: "Farine de blé", category: "Ingrédients de base", quantity: "180", unit: "kg" as const, minThreshold: "50", branchId: yaounde.id },
+        { name: "Sucre", category: "Ingrédients de base", quantity: "15", unit: "kg" as const, minThreshold: "20", branchId: yaounde.id },
+        { name: "Sel", category: "Ingrédients de base", quantity: "25", unit: "kg" as const, minThreshold: "5", branchId: yaounde.id },
+        { name: "Lait en poudre", category: "Produits laitiers", quantity: "20", unit: "kg" as const, minThreshold: "5", branchId: yaounde.id },
+        { name: "Levure", category: "Ingrédients de base", quantity: "1.5", unit: "kg" as const, minThreshold: "2", branchId: yaounde.id },
       ])
       .returning();
 
-    type MovementType = "stock_in" | "used_in_production" | "sold" | "damaged" | "missing_lost" | "returned";
     const movementsData: Array<{ itemId: number; branchId: number; userId: number; type: MovementType; quantity: string; note: string }> = [
       // Douala — 12 movements
       { itemId: items[0].id, branchId: douala.id, userId: staff1.id, type: "stock_in", quantity: "100", note: "Livraison hebdomadaire farine" },
@@ -121,8 +124,9 @@ router.post("/seed", async (req: any, res: any) => {
       items: items.length,
       movements: movements.length,
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 

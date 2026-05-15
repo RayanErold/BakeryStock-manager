@@ -1,15 +1,24 @@
+import { getAuthToken } from "./authToken";
+
 const BASE = "/api";
 
+/** In dev mode (no Clerk), forward the X-Dev-User-Id header from localStorage. */
 function devHeaders(): Record<string, string> {
   const devId = localStorage.getItem("dev_clerk_id");
   return devId ? { "X-Dev-User-Id": devId } : {};
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  // When Clerk is active, attach Bearer token; otherwise fall back to dev header
+  const token = await getAuthToken();
+  const authHeaders: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : devHeaders();
+
   const res = await fetch(`${BASE}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...devHeaders(),
+      ...authHeaders,
       ...options?.headers,
     },
     ...options,
