@@ -13,13 +13,21 @@ import {
   Globe,
   ChevronRight,
   LogOut,
+  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { useAppContext } from "@/contexts/AppContext";
+import { useAppContext, type AppTheme } from "@/contexts/AppContext";
 import { t } from "@/lib/i18n";
 import type { CurrentUser } from "@/hooks/useCurrentUser";
+
+const THEMES: { id: AppTheme; label: string; swatch: string }[] = [
+  { id: "amber",  label: "Warm Amber",   swatch: "hsl(30,85%,48%)" },
+  { id: "dark",   label: "Dark Mode",    swatch: "hsl(25,35%,18%)" },
+  { id: "ocean",  label: "Ocean Blue",   swatch: "hsl(214,55%,32%)" },
+  { id: "forest", label: "Forest Green", swatch: "hsl(100,25%,28%)" },
+];
 
 const navItems = (isOwner: boolean) => [
   { icon: LayoutDashboard, key: "dashboard" as const, path: "/" },
@@ -44,7 +52,7 @@ interface LayoutProps {
 export function Layout({ children, user, onSignOut }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [location] = useLocation();
-  const { lang, setLang } = useAppContext();
+  const { lang, setLang, theme, setTheme } = useAppContext();
   const isOwner = user.role === "owner";
   const items = navItems(isOwner);
 
@@ -111,6 +119,33 @@ export function Layout({ children, user, onSignOut }: LayoutProps) {
           <Globe className="w-4 h-4" />
           {lang === "en" ? "Français" : "English"}
         </Button>
+
+        {/* Theme switcher */}
+        <div className="px-3 py-1.5">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Palette className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground font-medium">
+              {lang === "en" ? "Theme" : "Thème"}
+            </span>
+          </div>
+          <div className="flex gap-1.5">
+            {THEMES.map(({ id, label, swatch }) => (
+              <button
+                key={id}
+                title={label}
+                onClick={() => setTheme(id)}
+                className={cn(
+                  "w-6 h-6 rounded-full border-2 transition-all hover:scale-110",
+                  theme === id
+                    ? "border-foreground shadow-sm scale-110"
+                    : "border-transparent opacity-70 hover:opacity-100",
+                )}
+                style={{ background: swatch }}
+              />
+            ))}
+          </div>
+        </div>
+
         <Button
           variant="ghost"
           size="sm"
