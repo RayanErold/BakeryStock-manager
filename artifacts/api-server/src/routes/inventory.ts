@@ -43,8 +43,11 @@ router.get("/inventory", requireAuth, async (req: any, res: any) => {
 
     const conditions: Parameters<typeof and>[0][] = [];
 
-    // Staff see only their branch; owners see all (or a specific filter)
-    if (currentUser.role === "staff" && currentUser.branchId) {
+    // Staff see only their branch; deny if no branch assigned
+    if (currentUser.role === "staff") {
+      if (!currentUser.branchId) {
+        return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
+      }
       conditions.push(eq(inventoryItemsTable.branchId, currentUser.branchId));
     } else {
       const { branchId } = req.query;
@@ -74,7 +77,10 @@ router.get("/inventory/low-stock", requireAuth, async (req: any, res: any) => {
     if (!currentUser) return res.status(401).json({ error: "User not found" });
 
     const conditions: Parameters<typeof and>[0][] = [];
-    if (currentUser.role === "staff" && currentUser.branchId) {
+    if (currentUser.role === "staff") {
+      if (!currentUser.branchId) {
+        return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
+      }
       conditions.push(eq(inventoryItemsTable.branchId, currentUser.branchId));
     } else {
       const { branchId } = req.query;
@@ -167,7 +173,7 @@ router.put("/inventory/:id", requireAuth, async (req: any, res: any) => {
     }
 
     const { name, category, quantity, unit, minThreshold, branchId } = req.body;
-    type UnitType = "kg" | "bags" | "liters" | "boxes" | "pieces" | "trays";
+    type UnitType = "kg" | "g" | "bags" | "sacks" | "liters" | "ml" | "boxes" | "pieces" | "trays" | "units";
     const updateData: Partial<{
       name: string; category: string; quantity: string; unit: UnitType;
       minThreshold: string; branchId: number; updatedAt: Date;

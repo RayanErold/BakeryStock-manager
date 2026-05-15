@@ -31,8 +31,11 @@ router.get("/movements", requireAuth, async (req: any, res: any) => {
 
     const conditions: Parameters<typeof and>[0][] = [];
 
-    // Branch isolation: staff see only their branch
-    if (currentUser.role === "staff" && currentUser.branchId) {
+    // Branch isolation: staff see only their branch; deny if no branch assigned
+    if (currentUser.role === "staff") {
+      if (!currentUser.branchId) {
+        return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
+      }
       conditions.push(eq(stockMovementsTable.branchId, currentUser.branchId));
     } else {
       const { branchId } = req.query;
@@ -71,6 +74,47 @@ router.get("/movements", requireAuth, async (req: any, res: any) => {
       .limit(limit ? parseInt(limit as string) : 100);
 
     return res.json(movements);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/movements/:id", requireAuth, async (req: any, res: any) => {
+  try {
+    const id = parseInt(req.params.id);
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+
+    const [movement] = await db
+      .select({
+        id: stockMovementsTable.id,
+        itemId: stockMovementsTable.itemId,
+        itemName: inventoryItemsTable.name,
+        branchId: stockMovementsTable.branchId,
+        branchName: branchesTable.name,
+        userId: stockMovementsTable.userId,
+        userName: usersTable.name,
+        type: stockMovementsTable.type,
+        quantity: stockMovementsTable.quantity,
+        note: stockMovementsTable.note,
+        createdAt: stockMovementsTable.createdAt,
+      })
+      .from(stockMovementsTable)
+      .leftJoin(inventoryItemsTable, eq(stockMovementsTable.itemId, inventoryItemsTable.id))
+      .leftJoin(branchesTable, eq(stockMovementsTable.branchId, branchesTable.id))
+      .leftJoin(usersTable, eq(stockMovementsTable.userId, usersTable.id))
+      .where(eq(stockMovementsTable.id, id))
+      .limit(1);
+
+    if (!movement) return res.status(404).json({ error: "Not found" });
+
+    // Staff branch isolation
+    if (currentUser.role === "staff") {
+      if (!currentUser.branchId) return res.status(403).json({ error: "Forbidden" });
+      if (movement.branchId !== currentUser.branchId) return res.status(403).json({ error: "Forbidden" });
+    }
+
+    return res.json(movement);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

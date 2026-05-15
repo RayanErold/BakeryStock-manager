@@ -42,7 +42,7 @@ interface Branch {
 }
 
 const CATEGORIES = ["Ingrédients de base", "Produits laitiers", "Huiles & Graisses", "Emballages", "Autre"];
-const UNITS = ["kg", "g", "liters", "ml", "trays", "boxes", "units", "sacks", "pieces"];
+const UNITS = ["kg", "g", "bags", "sacks", "liters", "ml", "boxes", "pieces", "trays", "units"];
 
 const emptyForm = {
   name: "",

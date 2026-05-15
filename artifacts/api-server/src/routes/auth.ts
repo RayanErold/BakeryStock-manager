@@ -8,17 +8,13 @@ const router = Router();
 
 const requireAuth = async (req: any, res: any, next: any) => {
   if (!process.env.CLERK_SECRET_KEY) {
+    // Dev mode: only accept explicit X-Dev-User-Id header (set by frontend after login selection)
     const devUserId = req.headers["x-dev-user-id"] as string | undefined;
-    if (devUserId) {
-      req.clerkUserId = devUserId;
-      return next();
+    if (!devUserId) {
+      return res.status(401).json({ error: "Unauthorized: no session (dev mode — select a user in the login page)" });
     }
-    const [firstOwner] = await db.select().from(usersTable).where(eq(usersTable.role, "owner")).limit(1);
-    if (firstOwner) {
-      req.clerkUserId = firstOwner.clerkId;
-      return next();
-    }
-    return res.status(401).json({ error: "Unauthorized" });
+    req.clerkUserId = devUserId;
+    return next();
   }
   const auth = getAuth(req);
   const userId = auth?.sessionClaims?.userId || auth?.userId;

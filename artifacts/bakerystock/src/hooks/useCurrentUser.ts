@@ -15,7 +15,7 @@ export function useCurrentUser() {
   return useQuery<CurrentUser>({
     queryKey: ["current-user"],
     queryFn: () => api.get<CurrentUser>("/auth/me"),
-    retry: 1,
+    retry: false,
     staleTime: 5 * 60 * 1000,
   });
 }

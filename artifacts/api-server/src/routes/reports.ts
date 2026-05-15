@@ -87,6 +87,7 @@ router.get(["/reports", "/reports/download"], requireAuth, async (req: any, res:
       return res.send(csvData);
     }
 
+    // pdf/html: return printable HTML (user prints to PDF from browser)
     res.setHeader("Content-Type", "text/html");
     const html = `<!DOCTYPE html>
 <html>

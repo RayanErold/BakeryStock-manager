@@ -160,14 +160,24 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, r
 
     return res.json({
       totalItems,
-      totalLowStock,
-      totalMissingToday,
-      totalDamagedToday,
-      totalMovementsToday: todayMovements.length,
+      lowStockCount: totalLowStock,
+      missingToday: Math.round(totalMissingToday),
+      damagedToday: Math.round(totalDamagedToday),
+      movementsToday: todayMovements.length,
       recentMovements,
-      lowStockAlerts,
-      branchOverviews,
-      topConsumption,
+      lowStockItems: lowStockAlerts,
+      branchSummary: allBranches.map((b) => {
+        const overview = branchOverviews.find((o) => o.branchId === b.id);
+        return {
+          id: b.id,
+          name: b.name,
+          city: b.city ?? "",
+          itemCount: overview?.totalItems ?? 0,
+          lowStockCount: overview?.lowStockCount ?? 0,
+          movementsToday: overview?.movementsToday ?? 0,
+        };
+      }),
+      topUsedItems: topConsumption.map((c) => ({ name: c.itemName, totalUsed: c.totalUsed })),
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
