@@ -16,15 +16,18 @@ interface Branch {
   name: string;
 }
 
-const REPORT_TYPES = [
+type ReportType = "daily" | "weekly" | "missing" | "damaged" | "branch_activity";
+type ReportFormat = "csv" | "pdf";
+
+const REPORT_TYPES: Array<{ value: ReportType; icon: typeof BarChart3; colorClass: string }> = [
   { value: "daily", icon: BarChart3, colorClass: "bg-amber-100 text-amber-700" },
   { value: "weekly", icon: BarChart3, colorClass: "bg-orange-100 text-orange-700" },
   { value: "missing", icon: AlertTriangle, colorClass: "bg-red-100 text-red-700" },
   { value: "damaged", icon: AlertTriangle, colorClass: "bg-rose-100 text-rose-700" },
   { value: "branch_activity", icon: FileText, colorClass: "bg-stone-100 text-stone-700" },
-] as const;
+];
 
-const reportLabels: Record<string, { en: string; fr: string; descEn: string; descFr: string }> = {
+const reportLabels: Record<ReportType, { en: string; fr: string; descEn: string; descFr: string }> = {
   daily: {
     en: "Daily Report",
     fr: "Rapport journalier",
@@ -57,10 +60,29 @@ const reportLabels: Record<string, { en: string; fr: string; descEn: string; des
   },
 };
 
+function buildReportUrl(
+  reportType: ReportType,
+  format: ReportFormat,
+  branchId: string,
+  dateFrom: string,
+  dateTo: string,
+): string {
+  const devId = localStorage.getItem("dev_clerk_id");
+  const params = new URLSearchParams({
+    type: reportType,
+    format: format === "pdf" ? "html" : "csv",
+    ...(branchId !== "all" && { branchId }),
+    ...(dateFrom && { dateFrom }),
+    ...(dateTo && { dateTo }),
+    ...(devId && { "x-dev": devId }),
+  });
+  return `/api/reports?${params}`;
+}
+
 export default function ReportsPage() {
   const { lang } = useAppContext();
-  const [reportType, setReportType] = useState("daily");
-  const [format, setFormat] = useState<"csv" | "html">("csv");
+  const [reportType, setReportType] = useState<ReportType>("daily");
+  const [format, setFormat] = useState<ReportFormat>("csv");
   const [branchId, setBranchId] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -74,41 +96,42 @@ export default function ReportsPage() {
   const downloadReport = async () => {
     setLoading(true);
     try {
+      const devId = localStorage.getItem("dev_clerk_id");
       const params = new URLSearchParams({
         type: reportType,
-        format,
+        format: "csv",
         ...(branchId !== "all" && { branchId }),
         ...(dateFrom && { dateFrom }),
         ...(dateTo && { dateTo }),
       });
 
-      const res = await fetch(`/api/reports?${params}`);
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err);
-      }
+      const res = await fetch(`/api/reports?${params}`, {
+        headers: devId ? { "X-Dev-User-Id": devId } : {},
+      });
+      if (!res.ok) throw new Error(await res.text());
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `bakerystock-${reportType}-${new Date().toISOString().split("T")[0]}.${format}`;
+      a.download = `bakerystock-${reportType}-${new Date().toISOString().split("T")[0]}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success(lang === "fr" ? "Rapport téléchargé" : "Report downloaded");
-    } catch (e: any) {
-      toast.error(e.message);
+      toast.success(lang === "fr" ? "Rapport CSV téléchargé" : "CSV report downloaded");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   };
 
-  const printReport = async () => {
+  const previewForPdf = async () => {
     setLoading(true);
     try {
+      const devId = localStorage.getItem("dev_clerk_id");
       const params = new URLSearchParams({
         type: reportType,
         format: "html",
@@ -117,7 +140,9 @@ export default function ReportsPage() {
         ...(dateTo && { dateTo }),
       });
 
-      const res = await fetch(`/api/reports?${params}`);
+      const res = await fetch(`/api/reports?${params}`, {
+        headers: devId ? { "X-Dev-User-Id": devId } : {},
+      });
       if (!res.ok) throw new Error(await res.text());
       const html = await res.text();
 
@@ -127,8 +152,8 @@ export default function ReportsPage() {
         win.document.close();
         setTimeout(() => win.print(), 500);
       }
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -140,8 +165,8 @@ export default function ReportsPage() {
         <h1 className="text-2xl font-bold text-foreground">{t(lang, "reports")}</h1>
         <p className="text-muted-foreground text-sm mt-0.5">
           {lang === "fr"
-            ? "Exportez et imprimez des rapports d'inventaire"
-            : "Export and print inventory reports"}
+            ? "Exportez CSV ou imprimez en PDF"
+            : "Export to CSV or print as PDF"}
         </p>
       </div>
 
@@ -197,13 +222,13 @@ export default function ReportsPage() {
             </div>
             <div>
               <Label>{t(lang, "format")}</Label>
-              <Select value={format} onValueChange={(v) => setFormat(v as any)}>
+              <Select value={format} onValueChange={(v: ReportFormat) => setFormat(v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="csv">CSV</SelectItem>
-                  <SelectItem value="html">HTML (Print)</SelectItem>
+                  <SelectItem value="pdf">PDF ({lang === "fr" ? "impression" : "print"})</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -218,14 +243,17 @@ export default function ReportsPage() {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <Button onClick={downloadReport} disabled={loading} className="gap-2">
-              <Download className="w-4 h-4" />
-              {t(lang, "download")} {format.toUpperCase()}
-            </Button>
-            <Button variant="outline" onClick={printReport} disabled={loading} className="gap-2">
-              <FileText className="w-4 h-4" />
-              {lang === "fr" ? "Aperçu / Imprimer" : "Preview / Print"}
-            </Button>
+            {format === "csv" ? (
+              <Button onClick={downloadReport} disabled={loading} className="gap-2">
+                <Download className="w-4 h-4" />
+                {t(lang, "download")} CSV
+              </Button>
+            ) : (
+              <Button onClick={previewForPdf} disabled={loading} className="gap-2">
+                <FileText className="w-4 h-4" />
+                {lang === "fr" ? "Aperçu / Imprimer PDF" : "Preview / Print PDF"}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

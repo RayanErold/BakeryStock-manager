@@ -8,9 +8,17 @@ const router = Router();
 
 const requireAuth = async (req: any, res: any, next: any) => {
   if (!process.env.CLERK_SECRET_KEY) {
+    const devUserId = req.headers["x-dev-user-id"] as string | undefined;
+    if (devUserId) {
+      req.clerkUserId = devUserId;
+      return next();
+    }
     const [firstOwner] = await db.select().from(usersTable).where(eq(usersTable.role, "owner")).limit(1);
-    req.clerkUserId = firstOwner?.clerkId ?? "dev_user";
-    return next();
+    if (firstOwner) {
+      req.clerkUserId = firstOwner.clerkId;
+      return next();
+    }
+    return res.status(401).json({ error: "Unauthorized" });
   }
   const auth = getAuth(req);
   const userId = auth?.sessionClaims?.userId || auth?.userId;

@@ -1,8 +1,17 @@
 const BASE = "/api";
 
+function devHeaders(): Record<string, string> {
+  const devId = localStorage.getItem("dev_clerk_id");
+  return devId ? { "X-Dev-User-Id": devId } : {};
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...devHeaders(),
+      ...options?.headers,
+    },
     ...options,
   });
   if (!res.ok) {

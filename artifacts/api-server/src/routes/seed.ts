@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
+import { requireAuth, requireOwner } from "./auth";
 import {
   usersTable,
   branchesTable,
@@ -10,7 +11,7 @@ import {
 
 const router = Router();
 
-router.post("/seed", async (_req: any, res: any) => {
+router.post("/seed", requireAuth, requireOwner, async (_req: any, res: any) => {
   try {
     const existingBranches = await db.select().from(branchesTable);
     if (existingBranches.length > 0) {

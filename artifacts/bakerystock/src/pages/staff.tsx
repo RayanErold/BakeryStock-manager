@@ -37,16 +37,21 @@ interface Branch {
   name: string;
 }
 
-const emptyForm = { name: "", email: "", role: "staff" as const, branchId: "" };
+type StaffRole = "owner" | "staff";
+
+const emptyEditForm = { role: "staff" as StaffRole, branchId: "" };
+const emptyCreateForm = { name: "", email: "", role: "staff" as StaffRole, branchId: "" };
 
 export default function StaffPage() {
   const { lang } = useAppContext();
   const qc = useQueryClient();
 
   const [search, setSearch] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [editMember, setEditMember] = useState<StaffMember | null>(null);
-  const [form, setForm] = useState({ ...emptyForm });
+  const [editForm, setEditForm] = useState({ ...emptyEditForm });
+  const [createForm, setCreateForm] = useState({ ...emptyCreateForm });
 
   const { data: staff = [], isLoading } = useQuery<StaffMember[]>({
     queryKey: ["staff"],
@@ -58,15 +63,32 @@ export default function StaffPage() {
     queryFn: () => api.get<Branch[]>("/branches"),
   });
 
+  const createMutation = useMutation({
+    mutationFn: (data: typeof createForm) =>
+      api.post("/auth/users", {
+        name: data.name,
+        email: data.email,
+        role: data.role,
+        branchId: data.branchId ? Number(data.branchId) : null,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["staff"] });
+      toast.success(t(lang, "saveSuccess"));
+      setCreateOpen(false);
+      setCreateForm({ ...emptyCreateForm });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { role?: string; branchId?: number | null } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { role: StaffRole; branchId: number | null } }) =>
       api.put(`/auth/users/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["staff"] });
       toast.success(t(lang, "saveSuccess"));
-      setDialogOpen(false);
+      setEditOpen(false);
       setEditMember(null);
-      setForm({ ...emptyForm });
+      setEditForm({ ...emptyEditForm });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -82,22 +104,28 @@ export default function StaffPage() {
 
   const openEdit = (member: StaffMember) => {
     setEditMember(member);
-    setForm({
-      name: member.name,
-      email: member.email,
+    setEditForm({
       role: member.role,
       branchId: member.branchId ? String(member.branchId) : "",
     });
-    setDialogOpen(true);
+    setEditOpen(true);
   };
 
-  const handleSubmit = () => {
+  const handleCreate = () => {
+    if (!createForm.name || !createForm.email) {
+      toast.error(lang === "fr" ? "Nom et email requis" : "Name and email are required");
+      return;
+    }
+    createMutation.mutate(createForm);
+  };
+
+  const handleUpdate = () => {
     if (!editMember) return;
     updateMutation.mutate({
       id: editMember.id,
       data: {
-        role: form.role,
-        branchId: form.branchId ? Number(form.branchId) : null,
+        role: editForm.role,
+        branchId: editForm.branchId ? Number(editForm.branchId) : null,
       },
     });
   };
@@ -117,6 +145,10 @@ export default function StaffPage() {
             {filtered.length} {lang === "fr" ? "membres" : "members"}
           </p>
         </div>
+        <Button onClick={() => setCreateOpen(true)} className="gap-2 shrink-0">
+          <Plus className="w-4 h-4" />
+          <span className="hidden sm:inline">{t(lang, "addStaff")}</span>
+        </Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -166,7 +198,6 @@ export default function StaffPage() {
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5 flex gap-3 flex-wrap">
                     <span>{m.email}</span>
-                    {m.branchName && <span>· {m.branchName}</span>}
                   </div>
                 </div>
                 <div className="shrink-0 flex items-center gap-1">
@@ -192,15 +223,36 @@ export default function StaffPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* Create Staff Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{t(lang, "edit")} — {editMember?.name}</DialogTitle>
+            <DialogTitle>{t(lang, "addStaff")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
+              <Label>{lang === "fr" ? "Nom complet" : "Full Name"} *</Label>
+              <Input
+                value={createForm.name}
+                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                placeholder={lang === "fr" ? "Ex: Marie Dupont" : "Ex: Marie Dupont"}
+              />
+            </div>
+            <div>
+              <Label>{t(lang, "email")} *</Label>
+              <Input
+                type="email"
+                value={createForm.email}
+                onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                placeholder="email@bakery.cm"
+              />
+            </div>
+            <div>
               <Label>{t(lang, "role")}</Label>
-              <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as any })}>
+              <Select
+                value={createForm.role}
+                onValueChange={(v: StaffRole) => setCreateForm({ ...createForm, role: v })}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -213,8 +265,8 @@ export default function StaffPage() {
             <div>
               <Label>{t(lang, "branch")}</Label>
               <Select
-                value={form.branchId}
-                onValueChange={(v) => setForm({ ...form, branchId: v })}
+                value={createForm.branchId}
+                onValueChange={(v) => setCreateForm({ ...createForm, branchId: v })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={t(lang, "selectBranch")} />
@@ -229,8 +281,57 @@ export default function StaffPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t(lang, "cancel")}</Button>
-            <Button onClick={handleSubmit} disabled={updateMutation.isPending}>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t(lang, "cancel")}</Button>
+            <Button onClick={handleCreate} disabled={createMutation.isPending}>
+              {t(lang, "save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Staff Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t(lang, "edit")} — {editMember?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>{t(lang, "role")}</Label>
+              <Select
+                value={editForm.role}
+                onValueChange={(v: StaffRole) => setEditForm({ ...editForm, role: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="owner">{t(lang, "owner")}</SelectItem>
+                  <SelectItem value="staff">{t(lang, "staffRole")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>{t(lang, "branch")}</Label>
+              <Select
+                value={editForm.branchId}
+                onValueChange={(v) => setEditForm({ ...editForm, branchId: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t(lang, "selectBranch")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{lang === "fr" ? "Aucune" : "None"}</SelectItem>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t(lang, "cancel")}</Button>
+            <Button onClick={handleUpdate} disabled={updateMutation.isPending}>
               {t(lang, "save")}
             </Button>
           </DialogFooter>

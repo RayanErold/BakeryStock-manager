@@ -23,7 +23,7 @@ function toCSV(rows: Record<string, any>[], headers: string[]): string {
   return csvRows.join("\n");
 }
 
-router.get("/reports/download", requireAuth, async (req: any, res: any) => {
+router.get(["/reports", "/reports/download"], requireAuth, async (req: any, res: any) => {
   try {
     const { type, format, branchId, dateFrom, dateTo } = req.query;
 

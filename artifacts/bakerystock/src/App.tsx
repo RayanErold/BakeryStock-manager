@@ -12,12 +12,19 @@ import AuditPage from "@/pages/audit";
 import BranchesPage from "@/pages/branches";
 import StaffPage from "@/pages/staff";
 import ReportsPage from "@/pages/reports";
+import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { useAppContext } from "@/contexts/AppContext";
 import { t } from "@/lib/i18n";
 
+function handleSignOut() {
+  localStorage.removeItem("dev_clerk_id");
+  queryClient.clear();
+  window.location.reload();
+}
+
 function AppRoutes() {
-  const { data: user, isLoading, error } = useCurrentUser();
+  const { data: user, isLoading, isError } = useCurrentUser();
   const { lang } = useAppContext();
 
   if (isLoading) {
@@ -33,33 +40,18 @@ function AppRoutes() {
     );
   }
 
-  if (error || !user) {
+  if (isError || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="text-center max-w-sm space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-primary mx-auto flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-2xl">BS</span>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">BakeryStock</h1>
-            <p className="text-muted-foreground mt-1 text-sm">
-              {lang === "fr"
-                ? "Gestion d'inventaire intelligente pour votre boulangerie"
-                : "Smart inventory management for your bakery"}
-            </p>
-          </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-            {lang === "fr"
-              ? "Connectez votre compte Clerk pour accéder à l'application."
-              : "Connect your Clerk account to access the application."}
-          </div>
-        </div>
-      </div>
+      <LoginPage
+        onLogin={() => {
+          queryClient.invalidateQueries({ queryKey: ["current-user"] });
+        }}
+      />
     );
   }
 
   return (
-    <Layout user={user}>
+    <Layout user={user} onSignOut={handleSignOut}>
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/inventory" component={InventoryPage} />
@@ -68,6 +60,16 @@ function AppRoutes() {
         <Route path="/branches" component={BranchesPage} />
         <Route path="/staff" component={StaffPage} />
         <Route path="/reports" component={ReportsPage} />
+        <Route
+          path="/login"
+          component={() => (
+            <LoginPage
+              onLogin={() => {
+                queryClient.invalidateQueries({ queryKey: ["current-user"] });
+              }}
+            />
+          )}
+        />
         <Route component={NotFound} />
       </Switch>
     </Layout>

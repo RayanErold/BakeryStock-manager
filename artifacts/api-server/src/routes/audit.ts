@@ -6,7 +6,7 @@ import { requireAuth, requireOwner } from "./auth";
 
 const router = Router();
 
-router.get(["/audit", "/audit-logs"], requireAuth, async (req: any, res: any) => {
+router.get(["/audit", "/audit-logs"], requireAuth, requireOwner, async (req: any, res: any) => {
   try {
     const { branchId, userId, itemId, movementType, dateFrom, dateTo, limit } = req.query;
 

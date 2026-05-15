@@ -10,9 +10,9 @@ import {
   FileBarChart,
   Menu,
   X,
-  LogOut,
   Globe,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,9 +25,9 @@ const navItems = (isOwner: boolean) => [
   { icon: LayoutDashboard, key: "dashboard" as const, path: "/" },
   { icon: Package, key: "inventory" as const, path: "/inventory" },
   { icon: ArrowLeftRight, key: "movements" as const, path: "/movements" },
-  { icon: ClipboardList, key: "audit" as const, path: "/audit" },
   ...(isOwner
     ? [
+        { icon: ClipboardList, key: "audit" as const, path: "/audit" },
         { icon: GitBranch, key: "branches" as const, path: "/branches" },
         { icon: Users, key: "staff" as const, path: "/staff" },
         { icon: FileBarChart, key: "reports" as const, path: "/reports" },
@@ -38,9 +38,10 @@ const navItems = (isOwner: boolean) => [
 interface LayoutProps {
   children: React.ReactNode;
   user: CurrentUser;
+  onSignOut: () => void;
 }
 
-export function Layout({ children, user }: LayoutProps) {
+export function Layout({ children, user, onSignOut }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [location] = useLocation();
   const { lang, setLang } = useAppContext();
@@ -109,6 +110,15 @@ export function Layout({ children, user }: LayoutProps) {
         >
           <Globe className="w-4 h-4" />
           {lang === "en" ? "Français" : "English"}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive"
+          onClick={onSignOut}
+        >
+          <LogOut className="w-4 h-4" />
+          {t(lang, "signOut")}
         </Button>
       </div>
     </div>
