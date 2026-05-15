@@ -45,7 +45,7 @@ const navItems = (isOwner: boolean) => [
 
 interface LayoutProps {
   children: React.ReactNode;
-  user: CurrentUser;
+  user: CurrentUser | null;
   onSignOut: () => void;
 }
 
@@ -53,7 +53,7 @@ export function Layout({ children, user, onSignOut }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [location] = useLocation();
   const { lang, setLang, theme, setTheme } = useAppContext();
-  const isOwner = user.role === "owner";
+  const isOwner = user?.role === "owner";
   const items = navItems(isOwner);
 
   const SidebarContent = () => (
