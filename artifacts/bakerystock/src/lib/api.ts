@@ -1,11 +1,11 @@
-import { getAuthToken } from "./authToken";
+import { getStoredUserId } from "./authToken";
 
 const BASE = "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = await getAuthToken();
-  const authHeaders: Record<string, string> = token
-    ? { Authorization: `Bearer ${token}` }
+  const userId = getStoredUserId();
+  const authHeaders: Record<string, string> = userId
+    ? { "X-User-Id": userId }
     : {};
 
   const res = await fetch(`${BASE}${path}`, {

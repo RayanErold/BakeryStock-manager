@@ -39,6 +39,16 @@ async function getOrCreateDefaultUser(): Promise<string> {
 
 const requireAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const headerUserId = req.headers["x-user-id"] as string | undefined;
+    if (headerUserId) {
+      const id = parseInt(headerUserId, 10);
+      const [user] = await db.select({ clerkId: usersTable.clerkId }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
+      if (user) {
+        (req as AuthedRequest).clerkUserId = user.clerkId;
+        next();
+        return;
+      }
+    }
     const clerkUserId = await getOrCreateDefaultUser();
     (req as AuthedRequest).clerkUserId = clerkUserId;
     next();
