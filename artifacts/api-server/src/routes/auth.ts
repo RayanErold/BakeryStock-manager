@@ -1,6 +1,5 @@
 import { Router } from "express";
 import type { RequestHandler, Request, Response, NextFunction } from "express";
-import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -8,29 +7,44 @@ import type { AuthedRequest } from "../types/express";
 
 const router = Router();
 
+/** Cache the auto-user clerkId so we don't hit the DB on every request. */
+let cachedUserId: string | null = null;
+
+async function getOrCreateDefaultUser(): Promise<string> {
+  if (cachedUserId) return cachedUserId;
+
+  const [first] = await db
+    .select({ clerkId: usersTable.clerkId })
+    .from(usersTable)
+    .limit(1);
+
+  if (first) {
+    cachedUserId = first.clerkId;
+    return first.clerkId;
+  }
+
+  // No users yet — create a default owner
+  const [created] = await db
+    .insert(usersTable)
+    .values({
+      clerkId: "default_owner",
+      name: "Owner",
+      email: "owner@bakerystock.local",
+      role: "owner",
+    })
+    .returning();
+  cachedUserId = created.clerkId;
+  return created.clerkId;
+}
+
 const requireAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
-  // Dev-mode bypass: only active when CLERK_SECRET_KEY is absent AND not in
-  // a production environment. This prevents header-spoofing if the key is
-  // accidentally unset in a deployed environment.
-  const isDevMode = !process.env.CLERK_SECRET_KEY && process.env.NODE_ENV !== "production";
-  if (isDevMode) {
-    const devUserId = req.headers["x-dev-user-id"] as string | undefined;
-    if (!devUserId) {
-      res.status(401).json({ error: "Unauthorized: no session (dev mode — select a user in the login page)" });
-      return;
-    }
-    (req as AuthedRequest).clerkUserId = devUserId;
+  try {
+    const clerkUserId = await getOrCreateDefaultUser();
+    (req as AuthedRequest).clerkUserId = clerkUserId;
     next();
-    return;
+  } catch {
+    res.status(500).json({ error: "Could not resolve user" });
   }
-  const auth = getAuth(req);
-  const userId = auth?.sessionClaims?.userId || auth?.userId;
-  if (!userId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  (req as AuthedRequest).clerkUserId = userId as string;
-  next();
 };
 
 const requireOwner: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
@@ -77,58 +91,19 @@ router.get("/auth/me", requireAuth, async (req: AuthedRequest, res: Response) =>
 
 router.post("/auth/sync", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
-    // Use the authenticated identity — not a body-supplied clerkId — to prevent spoofing.
-    const clerkId = req.clerkUserId;
-
-    const existing = await db
+    const [user] = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.clerkId, clerkId))
+      .where(eq(usersTable.clerkId, req.clerkUserId))
       .limit(1);
-
-    if (existing.length > 0) return res.json({ ...existing[0], branchName: null });
-
-    // Resolve name + email: prefer Clerk API (when key is available) over body fields.
-    let name: string = (req.body as Partial<{ name: string }>).name ?? "";
-    let email: string = (req.body as Partial<{ email: string }>).email ?? "";
-
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (clerkSecretKey) {
-      try {
-        const { createClerkClient } = await import("@clerk/express");
-        const clerkClient = createClerkClient({ secretKey: clerkSecretKey });
-        const clerkUser = await clerkClient.users.getUser(clerkId);
-        name =
-          [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
-          clerkUser.username ||
-          clerkUser.emailAddresses[0]?.emailAddress?.split("@")[0] ||
-          clerkId;
-        email = clerkUser.emailAddresses[0]?.emailAddress ?? email;
-      } catch {
-        // Clerk API unreachable — fall through to body/placeholder values
-      }
-    }
-
-    // Ensure non-empty values required by the DB notNull() constraints
-    if (!name) name = `User ${clerkId.slice(-6)}`;
-    if (!email) email = `${clerkId}@bakerystock.local`;
-
-    const totalUsers = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
-    const role: "owner" | "staff" = totalUsers.length === 0 ? "owner" : "staff";
-
-    const [newUser] = await db
-      .insert(usersTable)
-      .values({ clerkId, name, email, role })
-      .returning();
-
-    return res.json({ ...newUser, branchName: null });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Internal server error";
-    return res.status(500).json({ error: msg });
+    if (user) return res.json({ ...user, branchName: null });
+    return res.status(404).json({ error: "User not found" });
+  } catch {
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-const usersListHandler: RequestHandler = async (req: Request, res: Response) => {
+const usersListHandler: RequestHandler = async (_req: Request, res: Response) => {
   try {
     const users = await db
       .select({
@@ -153,12 +128,8 @@ router.get("/auth/users", requireAuth, requireOwner, usersListHandler);
 router.post("/users", requireAuth, requireOwner, async (req: Request, res: Response) => {
   try {
     const { name, email, role, branchId, clerkId: bodyClerkId } = req.body as {
-      name: string; email: string; role: "owner" | "staff"; branchId?: number;
-      /** Owner may supply the real Clerk user ID so the staff account can sign in via Clerk. */
-      clerkId?: string;
+      name: string; email: string; role: "owner" | "staff"; branchId?: number; clerkId?: string;
     };
-    // Use owner-supplied clerkId when provided (allows real Clerk accounts to be registered).
-    // Fallback placeholder is only for manual/demo records that don't map to a real Clerk user.
     const clerkId = bodyClerkId?.trim() || `manual_${Date.now()}`;
     const [user] = await db
       .insert(usersTable)
