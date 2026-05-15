@@ -56,6 +56,15 @@ export const fr = {
   today: "Aujourd'hui",
   items: "articles",
   units: "unités",
+
+  offline: "Hors ligne",
+  offlineBanner: "Vous êtes hors ligne — les mouvements seront synchronisés à la reconnexion.",
+  pendingSync: "en attente de synchronisation",
+  syncing: "Synchronisation…",
+  lastSynced: "Dernière sync",
+  syncNow: "Synchroniser",
+  savedOffline: "Enregistré hors ligne",
+  savedOfflineDetail: "Le mouvement sera envoyé à la reconnexion.",
 };
 
 export type TranslationKey = keyof typeof fr;

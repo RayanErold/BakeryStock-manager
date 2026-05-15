@@ -1,7 +1,7 @@
+import { Feather } from "@expo/vector-icons";
 import React, { useCallback } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Platform,
   Pressable,
   RefreshControl,
@@ -14,16 +14,26 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useGetDashboardSummary, useListStockMovements } from "@workspace/api-client-react";
 import { useBranch } from "@/context/BranchContext";
+import { useOfflineQueue } from "@/context/OfflineQueueContext";
 import { BranchSelector } from "@/components/BranchSelector";
 import { StatCard } from "@/components/StatCard";
 import { MovementCard } from "@/components/MovementCard";
 import { EmptyState } from "@/components/EmptyState";
 import { t } from "@/constants/i18n";
 
+function formatLastSynced(date: Date): string {
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diff < 60) return "à l'instant";
+  if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `il y a ${Math.floor(diff / 3600)} h`;
+  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
 export default function DashboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { selectedBranchId } = useBranch();
+  const { isOnline, pendingCount, lastSyncedAt, isSyncing, syncNow } = useOfflineQueue();
   const isWeb = Platform.OS === "web";
 
   const {
@@ -33,7 +43,7 @@ export default function DashboardScreen() {
     isRefetching: refreshingDash,
   } = useGetDashboardSummary(
     selectedBranchId ? { branchId: selectedBranchId } : {},
-    { query: { refetchInterval: 30000 } }
+    { query: { refetchInterval: isOnline ? 30000 : undefined } }
   );
 
   const {
@@ -43,7 +53,7 @@ export default function DashboardScreen() {
     isRefetching: refreshingMoves,
   } = useListStockMovements(
     { branchId: selectedBranchId ?? undefined, limit: 10 },
-    { query: { refetchInterval: 30000 } }
+    { query: { refetchInterval: isOnline ? 30000 : undefined } }
   );
 
   const isRefreshing = refreshingDash || refreshingMoves;
@@ -74,6 +84,35 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {/* Offline banner */}
+      {!isOnline && (
+        <View style={[styles.offlineBanner, { backgroundColor: colors.destructive + "18", borderColor: colors.destructive + "40" }]}>
+          <Feather name="wifi-off" size={14} color={colors.destructive} />
+          <Text style={[styles.offlineBannerText, { color: colors.destructive, fontFamily: "Outfit_500Medium" }]}>
+            {t("offlineBanner")}
+          </Text>
+        </View>
+      )}
+
+      {/* Sync queue indicator */}
+      {(pendingCount > 0 || isSyncing) && (
+        <Pressable
+          style={[styles.syncRow, { backgroundColor: colors.primary + "10", borderColor: colors.primary + "30" }]}
+          onPress={isOnline ? syncNow : undefined}
+        >
+          {isSyncing ? (
+            <ActivityIndicator size={12} color={colors.primary} />
+          ) : (
+            <Feather name="upload-cloud" size={14} color={colors.primary} />
+          )}
+          <Text style={[styles.syncRowText, { color: colors.primary, fontFamily: "Outfit_500Medium" }]}>
+            {isSyncing
+              ? t("syncing")
+              : `${pendingCount} ${t("pendingSync")}${isOnline ? " · " + t("syncNow") : ""}`}
+          </Text>
+        </Pressable>
+      )}
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[styles.content, { paddingBottom: bottomPadding + 90 }]}
@@ -102,15 +141,15 @@ export default function DashboardScreen() {
                 />
                 <StatCard
                   label={t("lowStock")}
-                  value={summary?.lowStockItems ?? 0}
+                  value={summary?.lowStockCount ?? 0}
                   icon="alert-triangle"
-                  tint={summary && summary.lowStockItems > 0 ? "destructive" : "primary"}
+                  tint={summary && summary.lowStockCount > 0 ? "destructive" : "primary"}
                 />
               </View>
               <View style={styles.statRow}>
                 <StatCard
                   label={t("movementsToday")}
-                  value={summary?.totalMovementsToday ?? 0}
+                  value={summary?.movementsToday ?? 0}
                   icon="activity"
                   tint="primary"
                 />
@@ -122,6 +161,16 @@ export default function DashboardScreen() {
                 />
               </View>
             </View>
+
+            {/* Last synced footer */}
+            {lastSyncedAt && (
+              <View style={styles.lastSyncRow}>
+                <Feather name="check-circle" size={11} color={colors.mutedForeground} />
+                <Text style={[styles.lastSyncText, { color: colors.mutedForeground, fontFamily: "Outfit_400Regular" }]}>
+                  {t("lastSynced")} {formatLastSynced(lastSyncedAt)}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Outfit_700Bold" }]}>
@@ -148,9 +197,7 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     borderBottomWidth: 1,
     paddingHorizontal: 16,
@@ -161,36 +208,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  appName: {
-    fontSize: 22,
-  },
-  subtitle: {
-    fontSize: 13,
-    marginTop: 1,
-  },
-  content: {
-    paddingTop: 16,
+  appName: { fontSize: 22 },
+  subtitle: { fontSize: 13, marginTop: 1 },
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
   },
+  offlineBannerText: { fontSize: 12, flex: 1 },
+  syncRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  syncRowText: { fontSize: 12 },
+  content: { paddingTop: 16, gap: 8 },
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingTop: 80,
   },
-  statsGrid: {
-    paddingHorizontal: 16,
-    gap: 10,
-    marginBottom: 8,
-  },
-  statRow: {
+  statsGrid: { paddingHorizontal: 16, gap: 10, marginBottom: 8 },
+  statRow: { flexDirection: "row", gap: 10 },
+  lastSyncRow: {
     flexDirection: "row",
-    gap: 10,
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 16,
+    marginBottom: 4,
   },
-  section: {
-    marginTop: 8,
-    gap: 0,
-  },
+  lastSyncText: { fontSize: 11 },
+  section: { marginTop: 8, gap: 0 },
   sectionTitle: {
     fontSize: 17,
     marginBottom: 12,
