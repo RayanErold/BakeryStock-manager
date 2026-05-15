@@ -8,6 +8,7 @@ export const branchesTable = pgTable("branches", {
   city: text("city").notNull(),
   manager: text("manager").notNull(),
   phone: text("phone").notNull(),
+  organizationId: text("organization_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

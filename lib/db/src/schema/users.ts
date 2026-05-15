@@ -9,6 +9,7 @@ export const usersTable = pgTable("users", {
   email: text("email").notNull().unique(),
   role: text("role", { enum: ["owner", "staff"] }).notNull().default("staff"),
   branchId: integer("branch_id"),
+  organizationId: text("organization_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

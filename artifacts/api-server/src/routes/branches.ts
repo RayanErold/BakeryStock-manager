@@ -22,15 +22,15 @@ router.get("/branches", requireAuth, async (req: AuthedRequest, res: Response) =
       if (!currentUser.branchId) {
         return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
       }
-      const [branch] = await db
-        .select()
-        .from(branchesTable)
-        .where(eq(branchesTable.id, currentUser.branchId))
-        .limit(1);
+      const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, currentUser.branchId)).limit(1);
       return res.json(branch ? [branch] : []);
     }
 
-    const branches = await db.select().from(branchesTable).orderBy(branchesTable.name);
+    const branches = await db
+      .select()
+      .from(branchesTable)
+      .where(eq(branchesTable.organizationId, currentUser.organizationId ?? ""))
+      .orderBy(branchesTable.name);
     return res.json(branches);
   } catch {
     return res.status(500).json({ error: "Internal server error" });
@@ -39,12 +39,13 @@ router.get("/branches", requireAuth, async (req: AuthedRequest, res: Response) =
 
 router.post("/branches", requireAuth, requireOwner, async (req: Request, res: Response) => {
   try {
+    const orgId = (req as AuthedRequest).organizationId;
     const { name, city, manager, phone } = req.body as {
       name: string; city: string; manager: string; phone: string;
     };
     const [branch] = await db
       .insert(branchesTable)
-      .values({ name, city, manager, phone })
+      .values({ name, city, manager, phone, organizationId: orgId ?? undefined })
       .returning();
     return res.status(201).json(branch);
   } catch (err: unknown) {
@@ -67,6 +68,11 @@ router.get("/branches/:id", requireAuth, async (req: AuthedRequest, res: Respons
 
     const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, id)).limit(1);
     if (!branch) return res.status(404).json({ error: "Not found" });
+
+    if (currentUser.role === "owner" && branch.organizationId !== currentUser.organizationId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
     return res.json(branch);
   } catch {
     return res.status(500).json({ error: "Internal server error" });
@@ -76,6 +82,12 @@ router.get("/branches/:id", requireAuth, async (req: AuthedRequest, res: Respons
 router.put("/branches/:id", requireAuth, requireOwner, async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
+    const orgId = (req as AuthedRequest).organizationId;
+
+    const [existing] = await db.select().from(branchesTable).where(eq(branchesTable.id, id)).limit(1);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    if (existing.organizationId !== orgId) return res.status(403).json({ error: "Forbidden" });
+
     const { name, city, manager, phone } = req.body as {
       name?: string; city?: string; manager?: string; phone?: string;
     };
@@ -94,6 +106,12 @@ router.put("/branches/:id", requireAuth, requireOwner, async (req: Request, res:
 router.delete("/branches/:id", requireAuth, requireOwner, (async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
+    const orgId = (req as AuthedRequest).organizationId;
+
+    const [existing] = await db.select().from(branchesTable).where(eq(branchesTable.id, id)).limit(1);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    if (existing.organizationId !== orgId) return res.status(403).json({ error: "Forbidden" });
+
     await db.delete(branchesTable).where(eq(branchesTable.id, id));
     return res.status(204).send();
   } catch {
@@ -116,19 +134,16 @@ router.get("/branches/:id/stats", requireAuth, async (req: AuthedRequest, res: R
     const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, id)).limit(1);
     if (!branch) return res.status(404).json({ error: "Not found" });
 
-    const items = await db
-      .select()
-      .from(inventoryItemsTable)
-      .where(eq(inventoryItemsTable.branchId, id));
+    if (currentUser.role === "owner" && branch.organizationId !== currentUser.organizationId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
+    const items = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.branchId, id));
     const totalItems = items.length;
-    const lowStockItems = items.filter(
-      (i) => parseFloat(i.quantity) <= parseFloat(i.minThreshold),
-    ).length;
+    const lowStockItems = items.filter((i) => parseFloat(i.quantity) <= parseFloat(i.minThreshold)).length;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const todayMovements = await db
       .select()
       .from(stockMovementsTable)
@@ -142,15 +157,7 @@ router.get("/branches/:id/stats", requireAuth, async (req: AuthedRequest, res: R
       .filter((m) => m.type === "damaged")
       .reduce((sum, m) => sum + parseFloat(m.quantity), 0);
 
-    return res.json({
-      branchId: id,
-      branchName: branch.name,
-      totalItems,
-      lowStockItems,
-      totalMovementsToday,
-      missingLostToday,
-      damagedToday,
-    });
+    return res.json({ branchId: id, branchName: branch.name, totalItems, lowStockItems, totalMovementsToday, missingLostToday, damagedToday });
   } catch {
     return res.status(500).json({ error: "Internal server error" });
   }

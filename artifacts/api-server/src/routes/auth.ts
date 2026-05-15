@@ -1,40 +1,53 @@
 import { Router } from "express";
 import type { RequestHandler, Request, Response, NextFunction } from "express";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { usersTable, branchesTable } from "@workspace/db";
+import { eq, isNull } from "drizzle-orm";
 import type { AuthedRequest } from "../types/express";
 
 const router = Router();
 
-/** Cache the auto-user clerkId so we don't hit the DB on every request. */
-let cachedUserId: string | null = null;
+const LEGACY_ORG_ID = "00000000-0000-0000-0000-000000000001";
+let legacyMigrationDone = false;
 
-async function getOrCreateDefaultUser(): Promise<string> {
-  if (cachedUserId) return cachedUserId;
+async function migrateToLegacyOrg() {
+  if (legacyMigrationDone) return;
+  legacyMigrationDone = true;
+  await db.update(usersTable).set({ organizationId: LEGACY_ORG_ID }).where(isNull(usersTable.organizationId));
+  await db.update(branchesTable).set({ organizationId: LEGACY_ORG_ID }).where(isNull(branchesTable.organizationId));
+}
+
+let cachedDefaultClerkId: string | null = null;
+
+async function getOrCreateDefaultUser(): Promise<{ clerkId: string; organizationId: string | null }> {
+  await migrateToLegacyOrg();
+
+  if (cachedDefaultClerkId) {
+    const [user] = await db
+      .select({ clerkId: usersTable.clerkId, organizationId: usersTable.organizationId })
+      .from(usersTable)
+      .where(eq(usersTable.clerkId, cachedDefaultClerkId))
+      .limit(1);
+    if (user) return user;
+  }
 
   const [first] = await db
-    .select({ clerkId: usersTable.clerkId })
+    .select({ clerkId: usersTable.clerkId, organizationId: usersTable.organizationId })
     .from(usersTable)
     .limit(1);
 
   if (first) {
-    cachedUserId = first.clerkId;
-    return first.clerkId;
+    cachedDefaultClerkId = first.clerkId;
+    return first;
   }
 
-  // No users yet — create a default owner
+  const orgId = crypto.randomUUID();
   const [created] = await db
     .insert(usersTable)
-    .values({
-      clerkId: "default_owner",
-      name: "Owner",
-      email: "owner@bakerystock.local",
-      role: "owner",
-    })
+    .values({ clerkId: "default_owner", name: "Owner", email: "owner@bakerystock.local", role: "owner", organizationId: orgId })
     .returning();
-  cachedUserId = created.clerkId;
-  return created.clerkId;
+  cachedDefaultClerkId = created.clerkId;
+  return { clerkId: created.clerkId, organizationId: created.organizationId };
 }
 
 const requireAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
@@ -42,15 +55,21 @@ const requireAuth: RequestHandler = async (req: Request, res: Response, next: Ne
     const headerUserId = req.headers["x-user-id"] as string | undefined;
     if (headerUserId) {
       const id = parseInt(headerUserId, 10);
-      const [user] = await db.select({ clerkId: usersTable.clerkId }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
+      const [user] = await db
+        .select({ clerkId: usersTable.clerkId, organizationId: usersTable.organizationId })
+        .from(usersTable)
+        .where(eq(usersTable.id, id))
+        .limit(1);
       if (user) {
         (req as AuthedRequest).clerkUserId = user.clerkId;
+        (req as AuthedRequest).organizationId = user.organizationId;
         next();
         return;
       }
     }
-    const clerkUserId = await getOrCreateDefaultUser();
-    (req as AuthedRequest).clerkUserId = clerkUserId;
+    const { clerkId, organizationId } = await getOrCreateDefaultUser();
+    (req as AuthedRequest).clerkUserId = clerkId;
+    (req as AuthedRequest).organizationId = organizationId;
     next();
   } catch {
     res.status(500).json({ error: "Could not resolve user" });
@@ -60,11 +79,7 @@ const requireAuth: RequestHandler = async (req: Request, res: Response, next: Ne
 const requireOwner: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const clerkUserId = (req as AuthedRequest).clerkUserId;
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.clerkId, clerkUserId))
-      .limit(1);
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkUserId)).limit(1);
     if (!user || user.role !== "owner") {
       res.status(403).json({ error: "Forbidden: owner only" });
       return;
@@ -79,19 +94,10 @@ const requireOwner: RequestHandler = async (req: Request, res: Response, next: N
 router.get("/auth/me", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const [user] = await db
-      .select({
-        id: usersTable.id,
-        clerkId: usersTable.clerkId,
-        name: usersTable.name,
-        email: usersTable.email,
-        role: usersTable.role,
-        branchId: usersTable.branchId,
-        createdAt: usersTable.createdAt,
-      })
+      .select({ id: usersTable.id, clerkId: usersTable.clerkId, name: usersTable.name, email: usersTable.email, role: usersTable.role, branchId: usersTable.branchId, organizationId: usersTable.organizationId, createdAt: usersTable.createdAt })
       .from(usersTable)
       .where(eq(usersTable.clerkId, req.clerkUserId))
       .limit(1);
-
     if (!user) return res.status(404).json({ error: "User not found" });
     return res.json({ ...user, branchName: null });
   } catch {
@@ -101,11 +107,7 @@ router.get("/auth/me", requireAuth, async (req: AuthedRequest, res: Response) =>
 
 router.post("/auth/sync", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.clerkId, req.clerkUserId))
-      .limit(1);
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.clerkId, req.clerkUserId)).limit(1);
     if (user) return res.json({ ...user, branchName: null });
     return res.status(404).json({ error: "User not found" });
   } catch {
@@ -113,19 +115,51 @@ router.post("/auth/sync", requireAuth, async (req: AuthedRequest, res: Response)
   }
 });
 
-const usersListHandler: RequestHandler = async (_req: Request, res: Response) => {
+router.get("/auth/find-by-email", async (req: Request, res: Response) => {
   try {
+    const { email } = req.query as Record<string, string | undefined>;
+    if (!email?.trim()) return res.status(400).json({ error: "email is required" });
+    const [user] = await db
+      .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role, organizationId: usersTable.organizationId })
+      .from(usersTable)
+      .where(eq(usersTable.email, email.trim().toLowerCase()))
+      .limit(1);
+    if (!user) return res.status(404).json({ error: "No account found with that email" });
+    return res.json(user);
+  } catch {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/auth/register-owner", async (req: Request, res: Response) => {
+  try {
+    const { name, email } = req.body as { name: string; email: string };
+    if (!name?.trim()) return res.status(400).json({ error: "name is required" });
+    if (!email?.trim()) return res.status(400).json({ error: "email is required" });
+
+    const orgId = crypto.randomUUID();
+    const clerkId = `owner_${Date.now()}`;
+    const [user] = await db
+      .insert(usersTable)
+      .values({ clerkId, name: name.trim(), email: email.trim().toLowerCase(), role: "owner", organizationId: orgId })
+      .returning();
+    return res.status(201).json({ ...user, branchName: null });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    if (msg.includes("unique") || msg.includes("duplicate")) {
+      return res.status(409).json({ error: "An account with that email already exists" });
+    }
+    return res.status(500).json({ error: msg });
+  }
+});
+
+const usersListHandler: RequestHandler = async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as AuthedRequest).organizationId;
     const users = await db
-      .select({
-        id: usersTable.id,
-        clerkId: usersTable.clerkId,
-        name: usersTable.name,
-        email: usersTable.email,
-        role: usersTable.role,
-        branchId: usersTable.branchId,
-        createdAt: usersTable.createdAt,
-      })
-      .from(usersTable);
+      .select({ id: usersTable.id, clerkId: usersTable.clerkId, name: usersTable.name, email: usersTable.email, role: usersTable.role, branchId: usersTable.branchId, organizationId: usersTable.organizationId, createdAt: usersTable.createdAt })
+      .from(usersTable)
+      .where(orgId ? eq(usersTable.organizationId, orgId) : isNull(usersTable.organizationId));
     return res.json(users.map((u) => ({ ...u, branchName: null })));
   } catch {
     return res.status(500).json({ error: "Internal server error" });
@@ -137,13 +171,15 @@ router.get("/auth/users", requireAuth, requireOwner, usersListHandler);
 
 router.post("/users", requireAuth, requireOwner, async (req: Request, res: Response) => {
   try {
+    const ownerOrgId = (req as AuthedRequest).organizationId;
     const { name, email, role, branchId, clerkId: bodyClerkId } = req.body as {
       name: string; email: string; role: "owner" | "staff"; branchId?: number; clerkId?: string;
     };
     const clerkId = bodyClerkId?.trim() || `manual_${Date.now()}`;
+    const orgId = role === "owner" ? crypto.randomUUID() : (ownerOrgId ?? LEGACY_ORG_ID);
     const [user] = await db
       .insert(usersTable)
-      .values({ clerkId, name, email, role, branchId })
+      .values({ clerkId, name, email, role, branchId, organizationId: orgId })
       .returning();
     return res.status(201).json({ ...user, branchName: null });
   } catch (err: unknown) {
@@ -171,11 +207,7 @@ const updateUserHandler: RequestHandler = async (req: Request, res: Response) =>
     if (body.name !== undefined) updateData.name = body.name;
     if (body.role !== undefined) updateData.role = body.role;
     if (body.branchId !== undefined) updateData.branchId = body.branchId === "" ? null : body.branchId;
-    const [user] = await db
-      .update(usersTable)
-      .set(updateData)
-      .where(eq(usersTable.id, id))
-      .returning();
+    const [user] = await db.update(usersTable).set(updateData).where(eq(usersTable.id, id)).returning();
     if (!user) return res.status(404).json({ error: "Not found" });
     return res.json({ ...user, branchName: null });
   } catch {
