@@ -18,9 +18,10 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, AlertTriangle, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import QRCodePrintDialog from "@/components/QRCodePrintDialog";
 
 interface InventoryItem {
   id: number;
@@ -29,6 +30,7 @@ interface InventoryItem {
   quantity: string;
   unit: string;
   minThreshold: string;
+  barcode?: string | null;
   branchId: number;
   branchName?: string;
   createdAt: string;
@@ -51,6 +53,7 @@ const emptyForm = {
   unit: "",
   minThreshold: "",
   branchId: "",
+  barcode: "",
 };
 
 export default function InventoryPage() {
@@ -65,6 +68,7 @@ export default function InventoryPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
+  const [qrItem, setQrItem] = useState<InventoryItem | null>(null);
 
   const { data: items = [], isLoading } = useQuery<InventoryItem[]>({
     queryKey: ["inventory"],
@@ -84,6 +88,7 @@ export default function InventoryPage() {
         quantity: Number(data.quantity),
         minThreshold: Number(data.minThreshold),
         branchId: Number(data.branchId),
+        barcode: data.barcode || null,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["inventory"] });
@@ -102,6 +107,7 @@ export default function InventoryPage() {
         quantity: data.quantity !== undefined ? Number(data.quantity) : undefined,
         minThreshold: data.minThreshold !== undefined ? Number(data.minThreshold) : undefined,
         branchId: data.branchId !== undefined ? Number(data.branchId) : undefined,
+        barcode: data.barcode !== undefined ? (data.barcode || null) : undefined,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["inventory"] });
@@ -139,6 +145,7 @@ export default function InventoryPage() {
       unit: item.unit,
       minThreshold: item.minThreshold,
       branchId: String(item.branchId),
+      barcode: item.barcode ?? "",
     });
     setDialogOpen(true);
   };
@@ -244,6 +251,12 @@ export default function InventoryPage() {
                         {t(lang, "lowStockLabel")}
                       </Badge>
                     )}
+                    {item.barcode && (
+                      <Badge variant="outline" className="text-xs border-blue-300 text-blue-700 bg-blue-50">
+                        <QrCode className="w-3 h-3 mr-1" />
+                        {t(lang, "barcodeAssigned")}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
                     <span>{item.category}</span>
@@ -258,6 +271,17 @@ export default function InventoryPage() {
                   </div>
                 </div>
                 <div className="shrink-0 flex items-center gap-1">
+                  {item.barcode && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-blue-600 hover:text-blue-700"
+                      title={t(lang, "printQR")}
+                      onClick={() => setQrItem(item)}
+                    >
+                      <QrCode className="w-4 h-4" />
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(item)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
@@ -339,6 +363,19 @@ export default function InventoryPage() {
                 placeholder="0"
               />
             </div>
+            <div>
+              <Label>{t(lang, "barcodeOptional")}</Label>
+              <Input
+                value={form.barcode}
+                onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                placeholder={lang === "fr" ? "Ex: 3017620422003" : "Ex: 3017620422003"}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {lang === "fr"
+                  ? "Saisir manuellement ou utiliser un scanner USB. Un QR code sera généré automatiquement."
+                  : "Type manually or use a USB scanner. A QR code will be generated automatically."}
+              </p>
+            </div>
             {isOwner && branches.length > 0 && (
               <div>
                 <Label>{t(lang, "branch")} *</Label>
@@ -366,6 +403,17 @@ export default function InventoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* QR Code Print Dialog */}
+      {qrItem && qrItem.barcode && (
+        <QRCodePrintDialog
+          open={!!qrItem}
+          onOpenChange={(open) => { if (!open) setQrItem(null); }}
+          itemName={qrItem.name}
+          barcode={qrItem.barcode}
+          lang={lang}
+        />
+      )}
     </div>
   );
 }

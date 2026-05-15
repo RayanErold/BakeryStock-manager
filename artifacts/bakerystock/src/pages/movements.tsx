@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppContext } from "@/contexts/AppContext";
@@ -19,10 +19,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, Calendar } from "lucide-react";
+import { Plus, Search, Calendar, ScanLine, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 interface Movement {
   id: number;
@@ -43,6 +44,7 @@ interface InventoryItem {
   name: string;
   branchId: number;
   unit: string;
+  barcode?: string | null;
 }
 
 interface Branch {
@@ -90,6 +92,7 @@ export default function MovementsPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [form, setForm] = useState({
     itemId: "",
     branchId: "",
@@ -167,8 +170,28 @@ export default function MovementsPage() {
       quantity: "",
       note: "",
     });
+    setShowScanner(false);
     setDialogOpen(true);
   };
+
+  const handleBarcodeScan = useCallback(async (code: string) => {
+    setShowScanner(false);
+    try {
+      const currentBranchId = form.branchId;
+      const qs = currentBranchId ? `?branchId=${encodeURIComponent(currentBranchId)}` : "";
+      const item = await api.get<InventoryItem>(`/inventory/barcode/${encodeURIComponent(code)}${qs}`);
+      setForm((prev) => ({
+        ...prev,
+        itemId: String(item.id),
+        branchId: prev.branchId || String(item.branchId),
+      }));
+      toast.success(lang === "fr" ? `Article trouvé: ${item.name}` : `Item found: ${item.name}`);
+    } catch {
+      toast.error(t(lang, "barcodeNotFound"));
+    }
+  }, [lang, form.branchId]);
+
+  const selectedItem = items.find((i) => String(i.id) === form.itemId);
 
   return (
     <div className="space-y-5 max-w-5xl mx-auto">
@@ -272,7 +295,7 @@ export default function MovementsPage() {
       )}
 
       {/* Record Movement Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setShowScanner(false); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{t(lang, "recordMovement")}</DialogTitle>
@@ -296,19 +319,57 @@ export default function MovementsPage() {
                 </Select>
               </div>
             )}
+
             <div>
-              <Label>{t(lang, "itemName")} *</Label>
-              <Select value={form.itemId} onValueChange={(v) => setForm({ ...form, itemId: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder={lang === "fr" ? "Sélectionner un article" : "Select item"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {branchItems.map((i) => (
-                    <SelectItem key={i.id} value={String(i.id)}>{i.name} ({i.unit})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between mb-1.5">
+                <Label>{t(lang, "itemName")} *</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 gap-1.5 text-xs"
+                  onClick={() => setShowScanner((s) => !s)}
+                >
+                  {showScanner ? (
+                    <>
+                      <X className="w-3.5 h-3.5" />
+                      {lang === "fr" ? "Fermer" : "Close"}
+                    </>
+                  ) : (
+                    <>
+                      <ScanLine className="w-3.5 h-3.5" />
+                      {t(lang, "scanBarcode")}
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {showScanner ? (
+                <BarcodeScanner
+                  onScan={handleBarcodeScan}
+                  onClose={() => setShowScanner(false)}
+                  label={t(lang, "scanToFill")}
+                />
+              ) : (
+                <Select value={form.itemId} onValueChange={(v) => setForm({ ...form, itemId: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={lang === "fr" ? "Sélectionner un article" : "Select item"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branchItems.map((i) => (
+                      <SelectItem key={i.id} value={String(i.id)}>{i.name} ({i.unit})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {selectedItem && !showScanner && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lang === "fr" ? "Unité:" : "Unit:"} <span className="font-medium">{selectedItem.unit}</span>
+                </p>
+              )}
             </div>
+
             <div>
               <Label>{t(lang, "movementType")} *</Label>
               <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>

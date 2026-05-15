@@ -27,6 +27,7 @@ async function buildItemsQuery(conditions: Parameters<typeof and>[0][]) {
       quantity: inventoryItemsTable.quantity,
       unit: inventoryItemsTable.unit,
       minThreshold: inventoryItemsTable.minThreshold,
+      barcode: inventoryItemsTable.barcode,
       branchId: inventoryItemsTable.branchId,
       branchName: branchesTable.name,
       createdAt: inventoryItemsTable.createdAt,
@@ -112,15 +113,46 @@ router.get("/inventory/low-stock", requireAuth, async (req: AuthedRequest, res: 
   }
 });
 
+/** Barcode lookup: GET /inventory/barcode/:code?branchId=<id> */
+router.get("/inventory/barcode/:code", requireAuth, async (req: AuthedRequest, res: Response) => {
+  try {
+    const code = String(req.params.code).trim();
+    if (!code) return res.status(400).json({ error: "Barcode is required" });
+
+    const currentUser = await getCurrentUser(req.clerkUserId);
+    if (!currentUser) return res.status(401).json({ error: "User not found" });
+    if (denyUnassignedStaff(currentUser, res)) return;
+
+    const conditions: Parameters<typeof and>[0][] = [
+      eq(inventoryItemsTable.barcode, code),
+    ];
+
+    if (currentUser.role === "staff") {
+      conditions.push(eq(inventoryItemsTable.branchId, currentUser.branchId!));
+    } else {
+      const { branchId } = req.query as Record<string, string | undefined>;
+      if (branchId) conditions.push(eq(inventoryItemsTable.branchId, parseInt(branchId)));
+    }
+
+    const [item] = await buildItemsQuery(conditions);
+    if (!item) return res.status(404).json({ error: "No item found with that barcode" });
+
+    return res.json({ ...item, isLowStock: parseFloat(item.quantity) <= parseFloat(item.minThreshold) });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
+  }
+});
+
 router.post("/inventory", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
     if (denyUnassignedStaff(currentUser, res)) return;
 
-    const { name, category, quantity, unit, minThreshold } = req.body as {
+    const { name, category, quantity, unit, minThreshold, barcode } = req.body as {
       name: string; category: string; quantity: number | string;
-      unit: UnitType; minThreshold: number | string; branchId?: number;
+      unit: UnitType; minThreshold: number | string; branchId?: number; barcode?: string;
     };
     let branchId: number = (req.body as { branchId?: number }).branchId!;
 
@@ -131,7 +163,15 @@ router.post("/inventory", requireAuth, async (req: AuthedRequest, res: Response)
 
     const [item] = await db
       .insert(inventoryItemsTable)
-      .values({ name, category, quantity: String(quantity), unit, minThreshold: String(minThreshold), branchId })
+      .values({
+        name,
+        category,
+        quantity: String(quantity),
+        unit,
+        minThreshold: String(minThreshold),
+        branchId,
+        barcode: barcode?.trim() || null,
+      })
       .returning();
 
     const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, item.branchId)).limit(1);
@@ -195,12 +235,12 @@ router.put("/inventory/:id", requireAuth, async (req: AuthedRequest, res: Respon
 
     const body = req.body as Partial<{
       name: string; category: string; quantity: number | string;
-      unit: UnitType; minThreshold: number | string; branchId: number;
+      unit: UnitType; minThreshold: number | string; branchId: number; barcode: string | null;
     }>;
 
     const updateData: Partial<{
       name: string; category: string; quantity: string;
-      unit: UnitType; minThreshold: string; branchId: number; updatedAt: Date;
+      unit: UnitType; minThreshold: string; branchId: number; barcode: string | null; updatedAt: Date;
     }> = {};
 
     if (body.name !== undefined) updateData.name = body.name;
@@ -208,6 +248,7 @@ router.put("/inventory/:id", requireAuth, async (req: AuthedRequest, res: Respon
     if (body.quantity !== undefined) updateData.quantity = String(body.quantity);
     if (body.unit !== undefined) updateData.unit = body.unit;
     if (body.minThreshold !== undefined) updateData.minThreshold = String(body.minThreshold);
+    if (body.barcode !== undefined) updateData.barcode = (typeof body.barcode === "string" ? body.barcode.trim() : null) || null;
     // Only owners can reassign branch
     if (body.branchId !== undefined && currentUser.role === "owner") updateData.branchId = body.branchId;
     updateData.updatedAt = new Date();

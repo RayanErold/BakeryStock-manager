@@ -9,6 +9,7 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   quantity: numeric("quantity", { precision: 10, scale: 2 }).notNull().default("0"),
   unit: text("unit", { enum: ["kg", "g", "bags", "sacks", "liters", "ml", "boxes", "pieces", "trays", "units"] }).notNull(),
   minThreshold: numeric("min_threshold", { precision: 10, scale: 2 }).notNull().default("0"),
+  barcode: text("barcode"),
   branchId: integer("branch_id").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

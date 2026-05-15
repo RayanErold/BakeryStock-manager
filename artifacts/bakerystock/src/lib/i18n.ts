@@ -101,6 +101,13 @@ export const translations = {
     createdAt: "Created",
     action: "Action",
     quantityChange: "Qty Change",
+    barcode: "Barcode / QR Code",
+    barcodeOptional: "Barcode (optional)",
+    scanBarcode: "Scan Barcode",
+    printQR: "Print QR",
+    scanToFill: "Scan a barcode to auto-fill the item",
+    barcodeNotFound: "No item found for that barcode",
+    barcodeAssigned: "Barcode assigned",
   },
   fr: {
     appName: "BakeryStock",
@@ -202,6 +209,13 @@ export const translations = {
     createdAt: "Créé le",
     action: "Action",
     quantityChange: "Variation de qté",
+    barcode: "Code-barres / QR Code",
+    barcodeOptional: "Code-barres (optionnel)",
+    scanBarcode: "Scanner le code-barres",
+    printQR: "Imprimer QR",
+    scanToFill: "Scannez un code-barres pour remplir l'article",
+    barcodeNotFound: "Aucun article trouvé pour ce code-barres",
+    barcodeAssigned: "Code-barres assigné",
   },
 };
 

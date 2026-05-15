@@ -76,6 +76,9 @@
   },
   "dependencies": {
     "@clerk/react": "^6.6.2",
-    "@clerk/themes": "^2.4.57"
+    "@clerk/themes": "^2.4.57",
+    "@zxing/browser": "^0.2.0",
+    "@zxing/library": "^0.23.0",
+    "react-qr-code": "^2.0.21"
   }
 }
