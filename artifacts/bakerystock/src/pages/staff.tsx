@@ -39,8 +39,16 @@ interface Branch {
 
 type StaffRole = "owner" | "staff";
 
-const emptyEditForm = { role: "staff" as StaffRole, branchId: "" };
-const emptyCreateForm = { name: "", email: "", role: "staff" as StaffRole, branchId: "" };
+/** Sentinel value for "no branch assigned" in Radix Select (empty string is not allowed). */
+const NO_BRANCH = "none";
+
+const emptyEditForm = { role: "staff" as StaffRole, branchId: NO_BRANCH };
+const emptyCreateForm = { name: "", email: "", clerkId: "", role: "staff" as StaffRole, branchId: NO_BRANCH };
+
+/** Convert the Select branchId sentinel back to null or a number for the API. */
+function branchIdToApi(value: string): number | null {
+  return value === NO_BRANCH || value === "" ? null : Number(value);
+}
 
 export default function StaffPage() {
   const { lang } = useAppContext();
@@ -69,7 +77,8 @@ export default function StaffPage() {
         name: data.name,
         email: data.email,
         role: data.role,
-        branchId: data.branchId ? Number(data.branchId) : null,
+        branchId: branchIdToApi(data.branchId),
+        ...(data.clerkId.trim() && { clerkId: data.clerkId.trim() }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["staff"] });
@@ -106,7 +115,7 @@ export default function StaffPage() {
     setEditMember(member);
     setEditForm({
       role: member.role,
-      branchId: member.branchId ? String(member.branchId) : "",
+      branchId: member.branchId ? String(member.branchId) : NO_BRANCH,
     });
     setEditOpen(true);
   };
@@ -125,7 +134,7 @@ export default function StaffPage() {
       id: editMember.id,
       data: {
         role: editForm.role,
-        branchId: editForm.branchId ? Number(editForm.branchId) : null,
+        branchId: branchIdToApi(editForm.branchId),
       },
     });
   };
@@ -248,6 +257,21 @@ export default function StaffPage() {
               />
             </div>
             <div>
+              <Label>
+                {lang === "fr" ? "Clerk User ID (optionnel)" : "Clerk User ID (optional)"}
+              </Label>
+              <Input
+                value={createForm.clerkId}
+                onChange={(e) => setCreateForm({ ...createForm, clerkId: e.target.value })}
+                placeholder="user_2abc..."
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {lang === "fr"
+                  ? "Permet au membre de se connecter via Clerk. Laissez vide pour un compte demo."
+                  : "Allows the member to sign in via Clerk. Leave blank for a demo account."}
+              </p>
+            </div>
+            <div>
               <Label>{t(lang, "role")}</Label>
               <Select
                 value={createForm.role}
@@ -272,7 +296,7 @@ export default function StaffPage() {
                   <SelectValue placeholder={t(lang, "selectBranch")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{lang === "fr" ? "Aucune" : "None"}</SelectItem>
+                  <SelectItem value={NO_BRANCH}>{lang === "fr" ? "Aucune" : "None"}</SelectItem>
                   {branches.map((b) => (
                     <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
                   ))}
@@ -321,7 +345,7 @@ export default function StaffPage() {
                   <SelectValue placeholder={t(lang, "selectBranch")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{lang === "fr" ? "Aucune" : "None"}</SelectItem>
+                  <SelectItem value={NO_BRANCH}>{lang === "fr" ? "Aucune" : "None"}</SelectItem>
                   {branches.map((b) => (
                     <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
                   ))}

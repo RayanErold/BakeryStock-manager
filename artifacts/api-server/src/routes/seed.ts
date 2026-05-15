@@ -16,8 +16,25 @@ type MovementType = "stock_in" | "used_in_production" | "sold" | "damaged" | "mi
 
 router.post("/seed", async (req: Request, res: Response) => {
   try {
-    // Bootstrap path: allow unauthenticated if no users exist yet.
-    // Once any user exists, require an authenticated owner.
+    // /seed is a dev/demo bootstrap tool only — never expose in production.
+    // A production deployment bootstraps its first owner through /auth/sync on first Clerk login.
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    // When a SEED_SECRET is configured, require it as a query/body param to prevent
+    // anonymous state-poisoning on shared dev environments.
+    const configuredSecret = process.env.SEED_SECRET;
+    if (configuredSecret) {
+      const provided =
+        (req.query.secret as string | undefined) ??
+        (req.body as Partial<{ secret: string }>).secret;
+      if (!provided || provided !== configuredSecret) {
+        return res.status(401).json({ error: "Invalid seed secret" });
+      }
+    }
+
+    // Once any user exists, also require an authenticated owner to prevent re-seeding.
     const existingUsers = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
     if (existingUsers.length > 0) {
       const clerkUserId: string | undefined =

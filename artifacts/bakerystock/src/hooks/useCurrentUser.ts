@@ -16,40 +16,29 @@ export interface CurrentUser {
  *
  * Flow when Clerk is active:
  *   1. Try GET /auth/me  →  user already synced, return it.
- *   2. If 404 (first login), call POST /auth/sync to create the DB record,
- *      then retry GET /auth/me.
+ *   2. On 404 (first login): call POST /auth/sync — the backend looks up
+ *      name + email from the Clerk API using the verified JWT, then retries
+ *      GET /auth/me.
  *
- * In dev mode (no Clerk key) the X-Dev-User-Id header is forwarded by api.ts
- * using the localStorage value set by the account picker.
+ * In dev mode the X-Dev-User-Id header is forwarded by api.ts from localStorage.
  */
 async function fetchCurrentUser(): Promise<CurrentUser> {
   try {
     return await api.get<CurrentUser>("/auth/me");
   } catch (err: unknown) {
-    // On 404, attempt first-login sync (Clerk mode only — dev mode seeds users via /seed)
     const msg = err instanceof Error ? err.message : "";
-    if (msg.includes("404") || msg.includes("Not Found") || msg.includes("User not found")) {
-      // Gather Clerk user metadata if available (name / email for DB record)
-      let name: string | undefined;
-      let email: string | undefined;
+    const isNotFound =
+      msg.includes("404") ||
+      msg.includes("Not Found") ||
+      msg.includes("User not found");
 
-      if (typeof window !== "undefined" && import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
-        try {
-          // Clerk stores user info on window.Clerk when loaded
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const clerkUser = (window as any).Clerk?.user;
-          if (clerkUser) {
-            name = clerkUser.fullName ?? clerkUser.firstName ?? undefined;
-            email = clerkUser.primaryEmailAddress?.emailAddress ?? undefined;
-          }
-        } catch {
-          // ignore — name/email are optional for sync
-        }
-      }
-
-      await api.post("/auth/sync", { name, email });
+    if (isNotFound && import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
+      // Backend reads name + email from Clerk API using the verified JWT clerkUserId.
+      // No user data needs to be sent from the browser.
+      await api.post("/auth/sync", {});
       return await api.get<CurrentUser>("/auth/me");
     }
+
     throw err;
   }
 }

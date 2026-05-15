@@ -18,7 +18,7 @@ interface Branch {
 }
 
 type ReportType = "daily" | "weekly" | "missing" | "damaged" | "branch_activity";
-type ReportFormat = "csv" | "pdf";
+type ReportFormat = "csv" | "print";
 
 const REPORT_TYPES: Array<{ value: ReportType; icon: typeof BarChart3; colorClass: string }> = [
   { value: "daily", icon: BarChart3, colorClass: "bg-amber-100 text-amber-700" },
@@ -122,7 +122,7 @@ export default function ReportsPage() {
     try {
       // Backend returns printable HTML for format=pdf (open in new tab → print dialog)
       const headers = await reportAuthHeaders();
-      const res = await fetch(`/api/reports?${buildParams("pdf")}`, { headers });
+      const res = await fetch(`/api/reports?${buildParams("print")}`, { headers });
       if (!res.ok) throw new Error(await res.text());
       const html = await res.text();
 
@@ -208,7 +208,7 @@ export default function ReportsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="csv">CSV</SelectItem>
-                  <SelectItem value="pdf">PDF ({lang === "fr" ? "impression" : "print"})</SelectItem>
+                  <SelectItem value="print">PDF ({lang === "fr" ? "impression" : "print"})</SelectItem>
                 </SelectContent>
               </Select>
             </div>

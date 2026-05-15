@@ -79,7 +79,6 @@ router.post("/auth/sync", requireAuth, async (req: AuthedRequest, res: Response)
   try {
     // Use the authenticated identity — not a body-supplied clerkId — to prevent spoofing.
     const clerkId = req.clerkUserId;
-    const { name, email } = req.body as { name: string; email: string };
 
     const existing = await db
       .select()
@@ -89,12 +88,37 @@ router.post("/auth/sync", requireAuth, async (req: AuthedRequest, res: Response)
 
     if (existing.length > 0) return res.json({ ...existing[0], branchName: null });
 
+    // Resolve name + email: prefer Clerk API (when key is available) over body fields.
+    let name: string = (req.body as Partial<{ name: string }>).name ?? "";
+    let email: string = (req.body as Partial<{ email: string }>).email ?? "";
+
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (clerkSecretKey) {
+      try {
+        const { createClerkClient } = await import("@clerk/express");
+        const clerkClient = createClerkClient({ secretKey: clerkSecretKey });
+        const clerkUser = await clerkClient.users.getUser(clerkId);
+        name =
+          [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+          clerkUser.username ||
+          clerkUser.emailAddresses[0]?.emailAddress?.split("@")[0] ||
+          clerkId;
+        email = clerkUser.emailAddresses[0]?.emailAddress ?? email;
+      } catch {
+        // Clerk API unreachable — fall through to body/placeholder values
+      }
+    }
+
+    // Ensure non-empty values required by the DB notNull() constraints
+    if (!name) name = `User ${clerkId.slice(-6)}`;
+    if (!email) email = `${clerkId}@bakerystock.local`;
+
     const totalUsers = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
-    const role = totalUsers.length === 0 ? "owner" : "staff";
+    const role: "owner" | "staff" = totalUsers.length === 0 ? "owner" : "staff";
 
     const [newUser] = await db
       .insert(usersTable)
-      .values({ clerkId, name, email, role: role as "owner" | "staff" })
+      .values({ clerkId, name, email, role })
       .returning();
 
     return res.json({ ...newUser, branchName: null });

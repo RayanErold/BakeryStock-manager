@@ -58,8 +58,8 @@ router.get(["/reports", "/reports/download"], requireAuth, async (req: AuthedReq
       return res.status(400).json({ error: "type and format are required" });
     }
 
-    if (!["csv", "pdf"].includes(format)) {
-      return res.status(400).json({ error: "format must be csv or pdf" });
+    if (!["csv", "print"].includes(format)) {
+      return res.status(400).json({ error: "format must be csv or print" });
     }
 
     // Resolve effective branch: staff always scoped to their branch
@@ -132,7 +132,7 @@ router.get(["/reports", "/reports/download"], requireAuth, async (req: AuthedReq
         return res.send(csvData);
       }
 
-      // PDF: printable HTML
+      // print: returns printable HTML (open in new tab → browser print dialog → save as PDF)
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>BakeryStock Branch Activity Report</title>
@@ -194,7 +194,7 @@ th{background:#F59E0B;color:white}tr:nth-child(even){background:#FEF3C7}</style>
       return res.send(csvData);
     }
 
-    // PDF: printable HTML — all DB values HTML-escaped
+    // print: printable HTML — all DB values HTML-escaped; open in new tab → browser print → save as PDF
     const reportTitle = {
       daily: "Daily Report",
       weekly: "Weekly Report",
