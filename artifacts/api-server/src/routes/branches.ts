@@ -1,8 +1,10 @@
 import { Router } from "express";
+import type { RequestHandler, Request, Response } from "express";
 import { db } from "@workspace/db";
 import { branchesTable, inventoryItemsTable, stockMovementsTable, usersTable } from "@workspace/db";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte } from "drizzle-orm";
 import { requireAuth, requireOwner } from "./auth";
+import type { AuthedRequest } from "../types/express";
 
 const router = Router();
 
@@ -11,47 +13,52 @@ async function getCurrentUser(clerkUserId: string) {
   return user ?? null;
 }
 
-router.get("/branches", requireAuth, async (req: any, res: any) => {
+router.get("/branches", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
 
-    // Staff only see their own branch; deny if unassigned
     if (currentUser.role === "staff") {
       if (!currentUser.branchId) {
         return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
       }
-      const [branch] = await db.select().from(branchesTable).where(eq(branchesTable.id, currentUser.branchId)).limit(1);
+      const [branch] = await db
+        .select()
+        .from(branchesTable)
+        .where(eq(branchesTable.id, currentUser.branchId))
+        .limit(1);
       return res.json(branch ? [branch] : []);
     }
 
     const branches = await db.select().from(branchesTable).orderBy(branchesTable.name);
     return res.json(branches);
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/branches", requireAuth, requireOwner, async (req: any, res: any) => {
+router.post("/branches", requireAuth, requireOwner, async (req: Request, res: Response) => {
   try {
-    const { name, city, manager, phone } = req.body;
+    const { name, city, manager, phone } = req.body as {
+      name: string; city: string; manager: string; phone: string;
+    };
     const [branch] = await db
       .insert(branchesTable)
       .values({ name, city, manager, phone })
       .returning();
     return res.status(201).json(branch);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 
-router.get("/branches/:id", requireAuth, async (req: any, res: any) => {
+router.get("/branches/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
 
-    // Staff can only access their own branch
     if (currentUser.role === "staff") {
       if (!currentUser.branchId || currentUser.branchId !== id) {
         return res.status(403).json({ error: "Forbidden" });
@@ -62,14 +69,16 @@ router.get("/branches/:id", requireAuth, async (req: any, res: any) => {
     if (!branch) return res.status(404).json({ error: "Not found" });
     return res.json(branch);
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.put("/branches/:id", requireAuth, requireOwner, async (req: any, res: any) => {
+router.put("/branches/:id", requireAuth, requireOwner, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    const { name, city, manager, phone } = req.body;
+    const id = parseInt(String(req.params.id), 10);
+    const { name, city, manager, phone } = req.body as {
+      name?: string; city?: string; manager?: string; phone?: string;
+    };
     const [branch] = await db
       .update(branchesTable)
       .set({ name, city, manager, phone })
@@ -78,27 +87,26 @@ router.put("/branches/:id", requireAuth, requireOwner, async (req: any, res: any
     if (!branch) return res.status(404).json({ error: "Not found" });
     return res.json(branch);
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.delete("/branches/:id", requireAuth, requireOwner, async (req: any, res: any) => {
+router.delete("/branches/:id", requireAuth, requireOwner, (async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     await db.delete(branchesTable).where(eq(branchesTable.id, id));
     return res.status(204).send();
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
-});
+}) as RequestHandler);
 
-router.get("/branches/:id/stats", requireAuth, async (req: any, res: any) => {
+router.get("/branches/:id/stats", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
 
-    // Staff can only access stats for their own branch
     if (currentUser.role === "staff") {
       if (!currentUser.branchId || currentUser.branchId !== id) {
         return res.status(403).json({ error: "Forbidden" });
@@ -124,12 +132,7 @@ router.get("/branches/:id/stats", requireAuth, async (req: any, res: any) => {
     const todayMovements = await db
       .select()
       .from(stockMovementsTable)
-      .where(
-        and(
-          eq(stockMovementsTable.branchId, id),
-          gte(stockMovementsTable.createdAt, today),
-        ),
-      );
+      .where(and(eq(stockMovementsTable.branchId, id), gte(stockMovementsTable.createdAt, today)));
 
     const totalMovementsToday = todayMovements.length;
     const missingLostToday = todayMovements
@@ -149,7 +152,7 @@ router.get("/branches/:id/stats", requireAuth, async (req: any, res: any) => {
       damagedToday,
     });
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

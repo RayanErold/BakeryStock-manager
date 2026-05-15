@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response } from "express";
 import { db } from "@workspace/db";
 import {
   stockMovementsTable,
@@ -9,6 +10,7 @@ import {
 } from "@workspace/db";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { requireAuth } from "./auth";
+import type { AuthedRequest } from "../types/express";
 
 const router = Router();
 
@@ -23,30 +25,29 @@ async function getCurrentUser(clerkUserId: string) {
   return user ?? null;
 }
 
-router.get("/movements", requireAuth, async (req: any, res: any) => {
+router.get("/movements", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
-    const { itemId, type, dateFrom, dateTo, limit } = req.query;
+    const query = req.query as Record<string, string | undefined>;
+    const { itemId, type, dateFrom, dateTo, limit } = query;
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
 
     const conditions: Parameters<typeof and>[0][] = [];
 
-    // Branch isolation: staff see only their branch; deny if no branch assigned
     if (currentUser.role === "staff") {
       if (!currentUser.branchId) {
         return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
       }
       conditions.push(eq(stockMovementsTable.branchId, currentUser.branchId));
     } else {
-      const { branchId } = req.query;
-      if (branchId) conditions.push(eq(stockMovementsTable.branchId, parseInt(branchId as string)));
+      if (query.branchId) conditions.push(eq(stockMovementsTable.branchId, parseInt(query.branchId)));
     }
 
-    if (itemId) conditions.push(eq(stockMovementsTable.itemId, parseInt(itemId as string)));
+    if (itemId) conditions.push(eq(stockMovementsTable.itemId, parseInt(itemId)));
     if (type) conditions.push(eq(stockMovementsTable.type, type as MovementType));
-    if (dateFrom) conditions.push(gte(stockMovementsTable.createdAt, new Date(dateFrom as string)));
+    if (dateFrom) conditions.push(gte(stockMovementsTable.createdAt, new Date(dateFrom)));
     if (dateTo) {
-      const end = new Date(dateTo as string);
+      const end = new Date(dateTo);
       end.setHours(23, 59, 59, 999);
       conditions.push(lte(stockMovementsTable.createdAt, end));
     }
@@ -71,17 +72,18 @@ router.get("/movements", requireAuth, async (req: any, res: any) => {
       .leftJoin(usersTable, eq(stockMovementsTable.userId, usersTable.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(stockMovementsTable.createdAt))
-      .limit(limit ? parseInt(limit as string) : 100);
+      .limit(limit ? parseInt(limit) : 100);
 
     return res.json(movements);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 
-router.get("/movements/:id", requireAuth, async (req: any, res: any) => {
+router.get("/movements/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
 
@@ -108,33 +110,34 @@ router.get("/movements/:id", requireAuth, async (req: any, res: any) => {
 
     if (!movement) return res.status(404).json({ error: "Not found" });
 
-    // Staff branch isolation
     if (currentUser.role === "staff") {
       if (!currentUser.branchId) return res.status(403).json({ error: "Forbidden" });
       if (movement.branchId !== currentUser.branchId) return res.status(403).json({ error: "Forbidden" });
     }
 
     return res.json(movement);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 
-router.post("/movements", requireAuth, async (req: any, res: any) => {
+router.post("/movements", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
-
-    const { itemId, type, quantity, note } = req.body;
-    let { branchId } = req.body;
-
-    // Staff must use their own branch
-    if (currentUser.role === "staff") {
-      branchId = currentUser.branchId;
+    if (currentUser.role === "staff" && !currentUser.branchId) {
+      return res.status(403).json({ error: "Forbidden: staff account has no branch assigned" });
     }
+
+    const { itemId, type, quantity, note } = req.body as {
+      itemId: number; type: MovementType; quantity: number | string; note?: string; branchId?: number;
+    };
+    let branchId: number = (req.body as { branchId?: number }).branchId!;
+
+    if (currentUser.role === "staff") branchId = currentUser.branchId!;
     if (!branchId) return res.status(400).json({ error: "branchId is required" });
 
-    // Verify item belongs to this branch
     const [item] = await db
       .select()
       .from(inventoryItemsTable)
@@ -149,13 +152,12 @@ router.post("/movements", requireAuth, async (req: any, res: any) => {
         itemId,
         branchId,
         userId: currentUser.id,
-        type: type as MovementType,
+        type,
         quantity: String(quantity),
-        note: note || null,
+        note: note ?? null,
       })
       .returning();
 
-    // Update inventory quantity
     const delta = parseFloat(String(quantity));
     const isDeduction = !["stock_in", "returned"].includes(type);
     const newQty = isDeduction
@@ -167,30 +169,30 @@ router.post("/movements", requireAuth, async (req: any, res: any) => {
       .set({ quantity: newQty.toFixed(3), updatedAt: new Date() })
       .where(eq(inventoryItemsTable.id, itemId));
 
-    // Write audit log
     await db.insert(auditLogsTable).values({
       userId: currentUser.id,
       branchId,
       itemId,
-      movementType: type as MovementType,
+      movementType: type,
       quantityChange: String(quantity),
-      note: note || null,
+      note: note ?? null,
     });
 
     return res.status(201).json(movement);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 
-router.put("/movements/:id", requireAuth, async (req: any, res: any) => {
+router.put("/movements/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
     if (currentUser.role !== "owner") return res.status(403).json({ error: "Forbidden: owner only" });
 
-    const { note } = req.body;
+    const { note } = req.body as { note?: string };
     const [updated] = await db
       .update(stockMovementsTable)
       .set({ note: note ?? null })
@@ -198,22 +200,24 @@ router.put("/movements/:id", requireAuth, async (req: any, res: any) => {
       .returning();
     if (!updated) return res.status(404).json({ error: "Not found" });
     return res.json(updated);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 
-router.delete("/movements/:id", requireAuth, async (req: any, res: any) => {
+router.delete("/movements/:id", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
     if (currentUser.role !== "owner") return res.status(403).json({ error: "Forbidden: owner only" });
 
     await db.delete(stockMovementsTable).where(eq(stockMovementsTable.id, id));
     return res.status(204).send();
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 

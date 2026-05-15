@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response } from "express";
 import { db } from "@workspace/db";
 import { auditLogsTable, usersTable, branchesTable, inventoryItemsTable } from "@workspace/db";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
@@ -6,19 +7,21 @@ import { requireAuth, requireOwner } from "./auth";
 
 const router = Router();
 
-router.get(["/audit", "/audit-logs"], requireAuth, requireOwner, async (req: any, res: any) => {
-  try {
-    const { branchId, userId, itemId, movementType, dateFrom, dateTo, limit } = req.query;
+type AuditMovementType = "stock_in" | "used_in_production" | "sold" | "damaged" | "missing_lost" | "returned";
 
-    const conditions: any[] = [];
-    if (branchId) conditions.push(eq(auditLogsTable.branchId, parseInt(branchId as string)));
-    if (userId) conditions.push(eq(auditLogsTable.userId, parseInt(userId as string)));
-    if (itemId) conditions.push(eq(auditLogsTable.itemId, parseInt(itemId as string)));
-    type AuditMovementType = "stock_in" | "used_in_production" | "sold" | "damaged" | "missing_lost" | "returned";
+router.get(["/audit", "/audit-logs"], requireAuth, requireOwner, async (req: Request, res: Response) => {
+  try {
+    const query = req.query as Record<string, string | undefined>;
+    const { branchId, userId, itemId, movementType, dateFrom, dateTo, limit } = query;
+
+    const conditions: Parameters<typeof and>[0][] = [];
+    if (branchId) conditions.push(eq(auditLogsTable.branchId, parseInt(branchId)));
+    if (userId) conditions.push(eq(auditLogsTable.userId, parseInt(userId)));
+    if (itemId) conditions.push(eq(auditLogsTable.itemId, parseInt(itemId)));
     if (movementType) conditions.push(eq(auditLogsTable.movementType, movementType as AuditMovementType));
-    if (dateFrom) conditions.push(gte(auditLogsTable.timestamp, new Date(dateFrom as string)));
+    if (dateFrom) conditions.push(gte(auditLogsTable.timestamp, new Date(dateFrom)));
     if (dateTo) {
-      const end = new Date(dateTo as string);
+      const end = new Date(dateTo);
       end.setHours(23, 59, 59, 999);
       conditions.push(lte(auditLogsTable.timestamp, end));
     }
@@ -43,11 +46,12 @@ router.get(["/audit", "/audit-logs"], requireAuth, requireOwner, async (req: any
       .leftJoin(inventoryItemsTable, eq(auditLogsTable.itemId, inventoryItemsTable.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(auditLogsTable.timestamp))
-      .limit(parseInt((limit as string) ?? "100"));
+      .limit(limit ? parseInt(limit) : 100);
 
     return res.json(logs);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Response } from "express";
 import { db } from "@workspace/db";
 import {
   inventoryItemsTable,
@@ -8,6 +9,7 @@ import {
 } from "@workspace/db";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { requireAuth } from "./auth";
+import type { AuthedRequest } from "../types/express";
 
 const router = Router();
 
@@ -16,7 +18,7 @@ async function getCurrentUser(clerkUserId: string) {
   return user ?? null;
 }
 
-router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, res: any) => {
+router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const currentUser = await getCurrentUser(req.clerkUserId);
     if (!currentUser) return res.status(401).json({ error: "User not found" });
@@ -27,7 +29,7 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, r
     }
 
     // Branch filter: staff always scoped to their branch; owners may pass an optional ?branchId param
-    const { branchId: queryBranchId } = req.query;
+    const { branchId: queryBranchId } = req.query as Record<string, string | undefined>;
     const branchFilter = currentUser.role === "staff"
       ? currentUser.branchId!
       : (queryBranchId ? parseInt(queryBranchId as string) : null);
@@ -195,8 +197,9 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, r
       }),
       topUsedItems: topConsumption.map((c) => ({ name: c.itemName, totalUsed: c.totalUsed })),
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 

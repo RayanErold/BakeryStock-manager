@@ -1,51 +1,58 @@
 import { Router } from "express";
+import type { RequestHandler, Request, Response, NextFunction } from "express";
 import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import type { AuthedRequest } from "../types/express";
 
 const router = Router();
 
-const requireAuth = async (req: any, res: any, next: any) => {
-  // Dev-mode bypass: only active when CLERK_SECRET_KEY is absent AND we are
-  // not in a production environment. This prevents header-spoofing if the
-  // key is accidentally unset in a deployed environment.
+const requireAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+  // Dev-mode bypass: only active when CLERK_SECRET_KEY is absent AND not in
+  // a production environment. This prevents header-spoofing if the key is
+  // accidentally unset in a deployed environment.
   const isDevMode = !process.env.CLERK_SECRET_KEY && process.env.NODE_ENV !== "production";
   if (isDevMode) {
     const devUserId = req.headers["x-dev-user-id"] as string | undefined;
     if (!devUserId) {
-      return res.status(401).json({ error: "Unauthorized: no session (dev mode — select a user in the login page)" });
+      res.status(401).json({ error: "Unauthorized: no session (dev mode — select a user in the login page)" });
+      return;
     }
-    req.clerkUserId = devUserId;
-    return next();
+    (req as AuthedRequest).clerkUserId = devUserId;
+    next();
+    return;
   }
   const auth = getAuth(req);
   const userId = auth?.sessionClaims?.userId || auth?.userId;
   if (!userId) {
-    return res.status(401).json({ error: "Unauthorized" });
+    res.status(401).json({ error: "Unauthorized" });
+    return;
   }
-  req.clerkUserId = userId;
+  (req as AuthedRequest).clerkUserId = userId as string;
   next();
 };
 
-const requireOwner = async (req: any, res: any, next: any) => {
+const requireOwner: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const clerkUserId = (req as AuthedRequest).clerkUserId;
     const [user] = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.clerkId, req.clerkUserId))
+      .where(eq(usersTable.clerkId, clerkUserId))
       .limit(1);
     if (!user || user.role !== "owner") {
-      return res.status(403).json({ error: "Forbidden: owner only" });
+      res.status(403).json({ error: "Forbidden: owner only" });
+      return;
     }
-    req.localUser = user;
+    (req as AuthedRequest).localUser = user;
     next();
   } catch {
     res.status(500).json({ error: "Internal server error" });
   }
 };
 
-router.get("/auth/me", requireAuth, async (req: any, res: any) => {
+router.get("/auth/me", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const [user] = await db
       .select({
@@ -61,21 +68,18 @@ router.get("/auth/me", requireAuth, async (req: any, res: any) => {
       .where(eq(usersTable.clerkId, req.clerkUserId))
       .limit(1);
 
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
+    if (!user) return res.status(404).json({ error: "User not found" });
     return res.json({ ...user, branchName: null });
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/auth/sync", requireAuth, async (req: any, res: any) => {
+router.post("/auth/sync", requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
-    // Use the authenticated identity, not body-supplied clerkId, to prevent spoofing
-    const clerkId = req.clerkUserId as string;
-    const { name, email } = req.body;
+    // Use the authenticated identity — not a body-supplied clerkId — to prevent spoofing.
+    const clerkId = req.clerkUserId;
+    const { name, email } = req.body as { name: string; email: string };
 
     const existing = await db
       .select()
@@ -83,25 +87,24 @@ router.post("/auth/sync", requireAuth, async (req: any, res: any) => {
       .where(eq(usersTable.clerkId, clerkId))
       .limit(1);
 
-    if (existing.length > 0) {
-      return res.json({ ...existing[0], branchName: null });
-    }
+    if (existing.length > 0) return res.json({ ...existing[0], branchName: null });
 
-    const totalUsers = await db.select().from(usersTable);
+    const totalUsers = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
     const role = totalUsers.length === 0 ? "owner" : "staff";
 
     const [newUser] = await db
       .insert(usersTable)
-      .values({ clerkId, name, email, role })
+      .values({ clerkId, name, email, role: role as "owner" | "staff" })
       .returning();
 
     return res.json({ ...newUser, branchName: null });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 
-const usersListHandler = async (req: any, res: any) => {
+const usersListHandler: RequestHandler = async (req: Request, res: Response) => {
   try {
     const users = await db
       .select({
@@ -116,45 +119,48 @@ const usersListHandler = async (req: any, res: any) => {
       .from(usersTable);
     return res.json(users.map((u) => ({ ...u, branchName: null })));
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
 router.get("/users", requireAuth, requireOwner, usersListHandler);
 router.get("/auth/users", requireAuth, requireOwner, usersListHandler);
 
-router.post("/users", requireAuth, requireOwner, async (req: any, res: any) => {
+router.post("/users", requireAuth, requireOwner, async (req: Request, res: Response) => {
   try {
-    const { name, email, role, branchId } = req.body;
+    const { name, email, role, branchId } = req.body as {
+      name: string; email: string; role: "owner" | "staff"; branchId?: number;
+    };
     const [user] = await db
       .insert(usersTable)
       .values({ clerkId: `manual_${Date.now()}`, name, email, role, branchId })
       .returning();
     return res.status(201).json({ ...user, branchName: null });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({ error: msg });
   }
 });
 
-const getUserByIdHandler = async (req: any, res: any) => {
+const getUserByIdHandler: RequestHandler = async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
     if (!user) return res.status(404).json({ error: "Not found" });
     return res.json({ ...user, branchName: null });
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
-const updateUserHandler = async (req: any, res: any) => {
+const updateUserHandler: RequestHandler = async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    const { name, role, branchId } = req.body;
-    const updateData: any = {};
-    if (name !== undefined) updateData.name = name;
-    if (role !== undefined) updateData.role = role;
-    if (branchId !== undefined) updateData.branchId = branchId === "" ? null : branchId;
+    const id = parseInt(String(req.params.id), 10);
+    const body = req.body as Partial<{ name: string; role: "owner" | "staff"; branchId: number | "" }>;
+    const updateData: Partial<{ name: string; role: "owner" | "staff"; branchId: number | null }> = {};
+    if (body.name !== undefined) updateData.name = body.name;
+    if (body.role !== undefined) updateData.role = body.role;
+    if (body.branchId !== undefined) updateData.branchId = body.branchId === "" ? null : body.branchId;
     const [user] = await db
       .update(usersTable)
       .set(updateData)
@@ -163,17 +169,17 @@ const updateUserHandler = async (req: any, res: any) => {
     if (!user) return res.status(404).json({ error: "Not found" });
     return res.json({ ...user, branchName: null });
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
-const deleteUserHandler = async (req: any, res: any) => {
+const deleteUserHandler: RequestHandler = async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     await db.delete(usersTable).where(eq(usersTable.id, id));
     return res.status(204).send();
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
