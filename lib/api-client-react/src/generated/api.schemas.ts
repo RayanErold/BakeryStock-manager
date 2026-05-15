@@ -34,11 +34,15 @@ export type UnitType = typeof UnitType[keyof typeof UnitType];
 
 export const UnitType = {
   kg: 'kg',
+  g: 'g',
   bags: 'bags',
+  sacks: 'sacks',
   liters: 'liters',
+  ml: 'ml',
   boxes: 'boxes',
   pieces: 'pieces',
   trays: 'trays',
+  units: 'units',
 } as const;
 
 export type ReportType = typeof ReportType[keyof typeof ReportType];
@@ -169,6 +173,10 @@ export interface CreateStockMovementRequest {
   note?: string | null;
 }
 
+export interface UpdateStockMovementRequest {
+  note?: string | null;
+}
+
 export interface AuditLog {
   id: number;
   userId: number;
@@ -221,12 +229,13 @@ export interface RecentMovement {
 
 export interface DashboardSummary {
   totalItems: number;
-  totalLowStock: number;
-  totalMissingToday: number;
-  totalDamagedToday: number;
-  branchOverviews: BranchOverview[];
+  lowStockCount: number;
+  missingToday: number;
+  damagedToday: number;
+  movementsToday: number;
   recentMovements: RecentMovement[];
-  lowStockAlerts: LowStockItem[];
+  lowStockItems: LowStockItem[];
+  branchSummary?: BranchOverview[];
   topUsedItems: TopUsedItem[];
 }
 
@@ -235,6 +244,10 @@ branchId?: number;
 category?: string;
 search?: string;
 lowStock?: boolean;
+};
+
+export type ListLowStockItemsParams = {
+branchId?: number;
 };
 
 export type ListStockMovementsParams = {

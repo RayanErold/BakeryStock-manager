@@ -12,11 +12,12 @@ import type { TopUsedItem } from './topUsedItem';
 
 export interface DashboardSummary {
   totalItems: number;
-  totalLowStock: number;
-  totalMissingToday: number;
-  totalDamagedToday: number;
-  branchOverviews: BranchOverview[];
+  lowStockCount: number;
+  missingToday: number;
+  damagedToday: number;
+  movementsToday: number;
   recentMovements: RecentMovement[];
-  lowStockAlerts: LowStockItem[];
+  lowStockItems: LowStockItem[];
+  branchSummary?: BranchOverview[];
   topUsedItems: TopUsedItem[];
 }

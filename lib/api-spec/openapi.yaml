@@ -550,15 +550,17 @@ paths:
             format: date
       responses:
         "200":
-          description: Report file
+          description: |
+            Report file. When format=csv, returns text/csv with Content-Disposition attachment.
+            When format=pdf, returns printable text/html (open in browser → File → Print → Save as PDF).
           content:
             text/csv:
               schema:
                 type: string
-            application/pdf:
+            text/html:
               schema:
                 type: string
-                format: binary
+                description: Printable HTML report; use the browser print dialog to save as PDF.
 
 components:
   parameters:

@@ -34,11 +34,14 @@ import type {
   InventoryItem,
   ListAuditLogsParams,
   ListInventoryItemsParams,
+  ListLowStockItemsParams,
   ListStockMovementsParams,
+  LowStockItem,
   StockMovement,
   SyncUserRequest,
   UpdateBranchRequest,
   UpdateInventoryItemRequest,
+  UpdateStockMovementRequest,
   UpdateUserRequest,
   User
 } from './api.schemas';
@@ -1246,6 +1249,90 @@ export const useCreateInventoryItem = <TError = ErrorType<unknown>,
       return useMutation(getCreateInventoryItemMutationOptions(options));
     }
 
+export const getListLowStockItemsUrl = (params?: ListLowStockItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/inventory/low-stock?${stringifiedParams}` : `/api/inventory/low-stock`
+}
+
+/**
+ * @summary List inventory items at or below their minimum threshold
+ */
+export const listLowStockItems = async (params?: ListLowStockItemsParams, options?: RequestInit): Promise<LowStockItem[]> => {
+
+  return customFetch<LowStockItem[]>(getListLowStockItemsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLowStockItemsQueryKey = (params?: ListLowStockItemsParams,) => {
+    return [
+    `/api/inventory/low-stock`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListLowStockItemsQueryOptions = <TData = Awaited<ReturnType<typeof listLowStockItems>>, TError = ErrorType<unknown>>(params?: ListLowStockItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLowStockItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLowStockItemsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLowStockItems>>> = ({ signal }) => listLowStockItems(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLowStockItems>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLowStockItemsQueryResult = NonNullable<Awaited<ReturnType<typeof listLowStockItems>>>
+export type ListLowStockItemsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List inventory items at or below their minimum threshold
+ */
+
+export function useListLowStockItems<TData = Awaited<ReturnType<typeof listLowStockItems>>, TError = ErrorType<unknown>>(
+ params?: ListLowStockItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLowStockItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLowStockItemsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getGetInventoryItemUrl = (id: number,) => {
 
 
@@ -1697,6 +1784,148 @@ export function useGetStockMovement<TData = Awaited<ReturnType<typeof getStockMo
 
 
 
+export const getUpdateStockMovementUrl = (id: number,) => {
+
+
+
+
+  return `/api/movements/${id}`
+}
+
+/**
+ * @summary Update a stock movement note (owner only)
+ */
+export const updateStockMovement = async (id: number,
+    updateStockMovementRequest: UpdateStockMovementRequest, options?: RequestInit): Promise<StockMovement> => {
+
+  return customFetch<StockMovement>(getUpdateStockMovementUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateStockMovementRequest,)
+  }
+);}
+
+
+
+
+export const getUpdateStockMovementMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStockMovement>>, TError,{id: number;data: BodyType<UpdateStockMovementRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateStockMovement>>, TError,{id: number;data: BodyType<UpdateStockMovementRequest>}, TContext> => {
+
+const mutationKey = ['updateStockMovement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateStockMovement>>, {id: number;data: BodyType<UpdateStockMovementRequest>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateStockMovement(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateStockMovementMutationResult = NonNullable<Awaited<ReturnType<typeof updateStockMovement>>>
+    export type UpdateStockMovementMutationBody = BodyType<UpdateStockMovementRequest>
+    export type UpdateStockMovementMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a stock movement note (owner only)
+ */
+export const useUpdateStockMovement = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStockMovement>>, TError,{id: number;data: BodyType<UpdateStockMovementRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateStockMovement>>,
+        TError,
+        {id: number;data: BodyType<UpdateStockMovementRequest>},
+        TContext
+      > => {
+      return useMutation(getUpdateStockMovementMutationOptions(options));
+    }
+
+export const getDeleteStockMovementUrl = (id: number,) => {
+
+
+
+
+  return `/api/movements/${id}`
+}
+
+/**
+ * @summary Delete a stock movement (owner only)
+ */
+export const deleteStockMovement = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteStockMovementUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteStockMovementMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStockMovement>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteStockMovement>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteStockMovement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteStockMovement>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteStockMovement(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteStockMovementMutationResult = NonNullable<Awaited<ReturnType<typeof deleteStockMovement>>>
+
+    export type DeleteStockMovementMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a stock movement (owner only)
+ */
+export const useDeleteStockMovement = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStockMovement>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteStockMovement>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteStockMovementMutationOptions(options));
+    }
+
 export const getListAuditLogsUrl = (params?: ListAuditLogsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -1883,9 +2112,9 @@ export const getDownloadReportUrl = (params: DownloadReportParams,) => {
 /**
  * @summary Download a report as CSV or PDF
  */
-export const downloadReport = async (params: DownloadReportParams, options?: RequestInit): Promise<string | Blob> => {
+export const downloadReport = async (params: DownloadReportParams, options?: RequestInit): Promise<string> => {
 
-  return customFetch<string | Blob>(getDownloadReportUrl(params),
+  return customFetch<string>(getDownloadReportUrl(params),
   {
     ...options,
     method: 'GET'

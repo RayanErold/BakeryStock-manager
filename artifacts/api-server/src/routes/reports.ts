@@ -58,8 +58,8 @@ router.get(["/reports", "/reports/download"], requireAuth, async (req: AuthedReq
       return res.status(400).json({ error: "type and format are required" });
     }
 
-    if (!["csv", "print"].includes(format)) {
-      return res.status(400).json({ error: "format must be csv or print" });
+    if (!["csv", "pdf"].includes(format)) {
+      return res.status(400).json({ error: "format must be csv or pdf" });
     }
 
     // Resolve effective branch: staff always scoped to their branch

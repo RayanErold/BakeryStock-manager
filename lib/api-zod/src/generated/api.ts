@@ -238,7 +238,7 @@ export const ListInventoryItemsResponseItem = zod.object({
   "name": zod.string(),
   "category": zod.string(),
   "quantity": zod.number(),
-  "unit": zod.enum(['kg', 'bags', 'liters', 'boxes', 'pieces', 'trays']),
+  "unit": zod.enum(['kg', 'g', 'bags', 'sacks', 'liters', 'ml', 'boxes', 'pieces', 'trays', 'units']),
   "minThreshold": zod.number(),
   "branchId": zod.number(),
   "branchName": zod.string().nullish(),
@@ -256,10 +256,29 @@ export const CreateInventoryItemBody = zod.object({
   "name": zod.string(),
   "category": zod.string(),
   "quantity": zod.number(),
-  "unit": zod.enum(['kg', 'bags', 'liters', 'boxes', 'pieces', 'trays']),
+  "unit": zod.enum(['kg', 'g', 'bags', 'sacks', 'liters', 'ml', 'boxes', 'pieces', 'trays', 'units']),
   "minThreshold": zod.number(),
   "branchId": zod.number()
 })
+
+
+/**
+ * @summary List inventory items at or below their minimum threshold
+ */
+export const ListLowStockItemsQueryParams = zod.object({
+  "branchId": zod.coerce.number().optional()
+})
+
+export const ListLowStockItemsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "minThreshold": zod.number(),
+  "unit": zod.enum(['kg', 'g', 'bags', 'sacks', 'liters', 'ml', 'boxes', 'pieces', 'trays', 'units']),
+  "branchId": zod.number(),
+  "branchName": zod.string().nullish()
+})
+export const ListLowStockItemsResponse = zod.array(ListLowStockItemsResponseItem)
 
 
 /**
@@ -274,7 +293,7 @@ export const GetInventoryItemResponse = zod.object({
   "name": zod.string(),
   "category": zod.string(),
   "quantity": zod.number(),
-  "unit": zod.enum(['kg', 'bags', 'liters', 'boxes', 'pieces', 'trays']),
+  "unit": zod.enum(['kg', 'g', 'bags', 'sacks', 'liters', 'ml', 'boxes', 'pieces', 'trays', 'units']),
   "minThreshold": zod.number(),
   "branchId": zod.number(),
   "branchName": zod.string().nullish(),
@@ -295,7 +314,7 @@ export const UpdateInventoryItemBody = zod.object({
   "name": zod.string().optional(),
   "category": zod.string().optional(),
   "quantity": zod.number().optional(),
-  "unit": zod.enum(['kg', 'bags', 'liters', 'boxes', 'pieces', 'trays']).optional(),
+  "unit": zod.enum(['kg', 'g', 'bags', 'sacks', 'liters', 'ml', 'boxes', 'pieces', 'trays', 'units']).optional(),
   "minThreshold": zod.number().optional(),
   "branchId": zod.number().optional()
 })
@@ -305,7 +324,7 @@ export const UpdateInventoryItemResponse = zod.object({
   "name": zod.string(),
   "category": zod.string(),
   "quantity": zod.number(),
-  "unit": zod.enum(['kg', 'bags', 'liters', 'boxes', 'pieces', 'trays']),
+  "unit": zod.enum(['kg', 'g', 'bags', 'sacks', 'liters', 'ml', 'boxes', 'pieces', 'trays', 'units']),
   "minThreshold": zod.number(),
   "branchId": zod.number(),
   "branchName": zod.string().nullish(),
@@ -388,6 +407,40 @@ export const GetStockMovementResponse = zod.object({
 
 
 /**
+ * @summary Update a stock movement note (owner only)
+ */
+export const UpdateStockMovementParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateStockMovementBody = zod.object({
+  "note": zod.string().nullish()
+})
+
+export const UpdateStockMovementResponse = zod.object({
+  "id": zod.number(),
+  "itemId": zod.number(),
+  "itemName": zod.string().nullish(),
+  "branchId": zod.number(),
+  "branchName": zod.string().nullish(),
+  "userId": zod.number(),
+  "userName": zod.string().nullish(),
+  "type": zod.enum(['stock_in', 'used_in_production', 'sold', 'damaged', 'missing_lost', 'returned']),
+  "quantity": zod.number(),
+  "note": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a stock movement (owner only)
+ */
+export const DeleteStockMovementParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
  * @summary List audit logs (owner only)
  */
 export const listAuditLogsQueryLimitDefault = 100;
@@ -427,16 +480,10 @@ export const GetDashboardSummaryQueryParams = zod.object({
 
 export const GetDashboardSummaryResponse = zod.object({
   "totalItems": zod.number(),
-  "totalLowStock": zod.number(),
-  "totalMissingToday": zod.number(),
-  "totalDamagedToday": zod.number(),
-  "branchOverviews": zod.array(zod.object({
-  "branchId": zod.number(),
-  "branchName": zod.string(),
-  "totalItems": zod.number(),
   "lowStockCount": zod.number(),
-  "movementsToday": zod.number()
-})),
+  "missingToday": zod.number(),
+  "damagedToday": zod.number(),
+  "movementsToday": zod.number(),
   "recentMovements": zod.array(zod.object({
   "id": zod.number(),
   "itemName": zod.string(),
@@ -444,23 +491,30 @@ export const GetDashboardSummaryResponse = zod.object({
   "userName": zod.string(),
   "type": zod.enum(['stock_in', 'used_in_production', 'sold', 'damaged', 'missing_lost', 'returned']),
   "quantity": zod.number(),
-  "unit": zod.enum(['kg', 'bags', 'liters', 'boxes', 'pieces', 'trays']),
+  "unit": zod.enum(['kg', 'g', 'bags', 'sacks', 'liters', 'ml', 'boxes', 'pieces', 'trays', 'units']),
   "createdAt": zod.coerce.date()
 })),
-  "lowStockAlerts": zod.array(zod.object({
+  "lowStockItems": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "quantity": zod.number(),
   "minThreshold": zod.number(),
-  "unit": zod.enum(['kg', 'bags', 'liters', 'boxes', 'pieces', 'trays']),
+  "unit": zod.enum(['kg', 'g', 'bags', 'sacks', 'liters', 'ml', 'boxes', 'pieces', 'trays', 'units']),
   "branchId": zod.number(),
   "branchName": zod.string().nullish()
 })),
+  "branchSummary": zod.array(zod.object({
+  "branchId": zod.number(),
+  "branchName": zod.string(),
+  "totalItems": zod.number(),
+  "lowStockCount": zod.number(),
+  "movementsToday": zod.number()
+})).optional(),
   "topUsedItems": zod.array(zod.object({
   "itemId": zod.number(),
   "itemName": zod.string(),
   "totalUsed": zod.number(),
-  "unit": zod.enum(['kg', 'bags', 'liters', 'boxes', 'pieces', 'trays'])
+  "unit": zod.enum(['kg', 'g', 'bags', 'sacks', 'liters', 'ml', 'boxes', 'pieces', 'trays', 'units'])
 }))
 })
 

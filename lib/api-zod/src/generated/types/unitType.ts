@@ -11,9 +11,13 @@ export type UnitType = typeof UnitType[keyof typeof UnitType];
 
 export const UnitType = {
   kg: 'kg',
+  g: 'g',
   bags: 'bags',
+  sacks: 'sacks',
   liters: 'liters',
+  ml: 'ml',
   boxes: 'boxes',
   pieces: 'pieces',
   trays: 'trays',
+  units: 'units',
 } as const;
