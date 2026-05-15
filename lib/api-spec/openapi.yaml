@@ -3,20 +3,33 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: BakeryStock API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: branches
+    description: Branch management
+  - name: inventory
+    description: Inventory item management
+  - name: movements
+    description: Stock movement tracking
+  - name: audit
+    description: Audit log
+  - name: dashboard
+    description: Dashboard aggregates
+  - name: reports
+    description: Reporting and exports
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +37,490 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+
+  /auth/sync:
+    post:
+      operationId: syncUser
+      tags: [auth]
+      summary: Sync Clerk user to local DB on first login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncUserRequest"
+      responses:
+        "200":
+          description: User synced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [auth]
+      summary: List all staff users (owner only)
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [auth]
+      summary: Create a staff account (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [auth]
+      summary: Get user by ID
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    put:
+      operationId: updateUser
+      tags: [auth]
+      summary: Update user (owner only)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: deleteUser
+      tags: [auth]
+      summary: Delete user (owner only)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deleted
+
+  /branches:
+    get:
+      operationId: listBranches
+      tags: [branches]
+      summary: List all branches
+      responses:
+        "200":
+          description: List of branches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Branch"
+    post:
+      operationId: createBranch
+      tags: [branches]
+      summary: Create a branch (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBranchRequest"
+      responses:
+        "201":
+          description: Branch created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+
+  /branches/{id}:
+    get:
+      operationId: getBranch
+      tags: [branches]
+      summary: Get branch by ID
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+    put:
+      operationId: updateBranch
+      tags: [branches]
+      summary: Update branch (owner only)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBranchRequest"
+      responses:
+        "200":
+          description: Updated branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+    delete:
+      operationId: deleteBranch
+      tags: [branches]
+      summary: Delete branch (owner only)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deleted
+
+  /branches/{id}/stats:
+    get:
+      operationId: getBranchStats
+      tags: [branches]
+      summary: Get inventory stats for a branch
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Branch stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchStats"
+
+  /inventory:
+    get:
+      operationId: listInventoryItems
+      tags: [inventory]
+      summary: List inventory items
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: integer
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: lowStock
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of inventory items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryItem"
+    post:
+      operationId: createInventoryItem
+      tags: [inventory]
+      summary: Create an inventory item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInventoryItemRequest"
+      responses:
+        "201":
+          description: Item created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+
+  /inventory/{id}:
+    get:
+      operationId: getInventoryItem
+      tags: [inventory]
+      summary: Get inventory item by ID
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Inventory item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+    put:
+      operationId: updateInventoryItem
+      tags: [inventory]
+      summary: Update inventory item
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInventoryItemRequest"
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+    delete:
+      operationId: deleteInventoryItem
+      tags: [inventory]
+      summary: Delete inventory item
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deleted
+
+  /movements:
+    get:
+      operationId: listStockMovements
+      tags: [movements]
+      summary: List stock movements
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: integer
+        - name: itemId
+          in: query
+          schema:
+            type: integer
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/MovementType"
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: List of movements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockMovement"
+    post:
+      operationId: createStockMovement
+      tags: [movements]
+      summary: Record a stock movement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStockMovementRequest"
+      responses:
+        "201":
+          description: Movement recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockMovement"
+
+  /movements/{id}:
+    get:
+      operationId: getStockMovement
+      tags: [movements]
+      summary: Get stock movement by ID
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Stock movement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockMovement"
+
+  /audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [audit]
+      summary: List audit logs (owner only)
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: integer
+        - name: userId
+          in: query
+          schema:
+            type: integer
+        - name: itemId
+          in: query
+          schema:
+            type: integer
+        - name: movementType
+          in: query
+          schema:
+            $ref: "#/components/schemas/MovementType"
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary data
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /reports/download:
+    get:
+      operationId: downloadReport
+      tags: [reports]
+      summary: Download a report as CSV or PDF
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/ReportType"
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [csv, pdf]
+        - name: branchId
+          in: query
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Report file
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
 components:
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +530,476 @@ components:
       required:
         - status
 
+    UserRole:
+      type: string
+      enum: [owner, staff]
+
+    MovementType:
+      type: string
+      enum: [stock_in, used_in_production, sold, damaged, missing_lost, returned]
+
+    UnitType:
+      type: string
+      enum: [kg, bags, liters, boxes, pieces, trays]
+
+    ReportType:
+      type: string
+      enum: [daily, weekly, missing, damaged, branch_activity]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        clerkId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+        branchId:
+          type: integer
+          nullable: true
+        branchName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - clerkId
+        - name
+        - email
+        - role
+        - createdAt
+
+    SyncUserRequest:
+      type: object
+      properties:
+        clerkId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+      required:
+        - clerkId
+        - name
+        - email
+
+    CreateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+        branchId:
+          type: integer
+          nullable: true
+      required:
+        - name
+        - email
+        - role
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+        branchId:
+          type: integer
+          nullable: true
+
+    Branch:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        city:
+          type: string
+        manager:
+          type: string
+        phone:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - city
+        - manager
+        - phone
+        - createdAt
+
+    CreateBranchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        city:
+          type: string
+        manager:
+          type: string
+        phone:
+          type: string
+      required:
+        - name
+        - city
+        - manager
+        - phone
+
+    UpdateBranchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        city:
+          type: string
+        manager:
+          type: string
+        phone:
+          type: string
+
+    BranchStats:
+      type: object
+      properties:
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        totalItems:
+          type: integer
+        lowStockItems:
+          type: integer
+        totalMovementsToday:
+          type: integer
+        missingLostToday:
+          type: number
+        damagedToday:
+          type: number
+      required:
+        - branchId
+        - branchName
+        - totalItems
+        - lowStockItems
+        - totalMovementsToday
+        - missingLostToday
+        - damagedToday
+
+    InventoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+        quantity:
+          type: number
+        unit:
+          $ref: "#/components/schemas/UnitType"
+        minThreshold:
+          type: number
+        branchId:
+          type: integer
+        branchName:
+          type: string
+          nullable: true
+        isLowStock:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - category
+        - quantity
+        - unit
+        - minThreshold
+        - branchId
+        - isLowStock
+        - createdAt
+        - updatedAt
+
+    CreateInventoryItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        quantity:
+          type: number
+        unit:
+          $ref: "#/components/schemas/UnitType"
+        minThreshold:
+          type: number
+        branchId:
+          type: integer
+      required:
+        - name
+        - category
+        - quantity
+        - unit
+        - minThreshold
+        - branchId
+
+    UpdateInventoryItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        quantity:
+          type: number
+        unit:
+          $ref: "#/components/schemas/UnitType"
+        minThreshold:
+          type: number
+        branchId:
+          type: integer
+
+    StockMovement:
+      type: object
+      properties:
+        id:
+          type: integer
+        itemId:
+          type: integer
+        itemName:
+          type: string
+          nullable: true
+        branchId:
+          type: integer
+        branchName:
+          type: string
+          nullable: true
+        userId:
+          type: integer
+        userName:
+          type: string
+          nullable: true
+        type:
+          $ref: "#/components/schemas/MovementType"
+        quantity:
+          type: number
+        note:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - itemId
+        - branchId
+        - userId
+        - type
+        - quantity
+        - createdAt
+
+    CreateStockMovementRequest:
+      type: object
+      properties:
+        itemId:
+          type: integer
+        branchId:
+          type: integer
+        type:
+          $ref: "#/components/schemas/MovementType"
+        quantity:
+          type: number
+        note:
+          type: string
+          nullable: true
+      required:
+        - itemId
+        - branchId
+        - type
+        - quantity
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        userName:
+          type: string
+          nullable: true
+        branchId:
+          type: integer
+        branchName:
+          type: string
+          nullable: true
+        itemId:
+          type: integer
+        itemName:
+          type: string
+          nullable: true
+        quantityChange:
+          type: number
+        movementType:
+          $ref: "#/components/schemas/MovementType"
+        note:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - branchId
+        - itemId
+        - quantityChange
+        - movementType
+        - timestamp
+
+    LowStockItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: number
+        minThreshold:
+          type: number
+        unit:
+          $ref: "#/components/schemas/UnitType"
+        branchId:
+          type: integer
+        branchName:
+          type: string
+          nullable: true
+      required:
+        - id
+        - name
+        - quantity
+        - minThreshold
+        - unit
+        - branchId
+
+    TopUsedItem:
+      type: object
+      properties:
+        itemId:
+          type: integer
+        itemName:
+          type: string
+        totalUsed:
+          type: number
+        unit:
+          $ref: "#/components/schemas/UnitType"
+      required:
+        - itemId
+        - itemName
+        - totalUsed
+        - unit
+
+    BranchOverview:
+      type: object
+      properties:
+        branchId:
+          type: integer
+        branchName:
+          type: string
+        totalItems:
+          type: integer
+        lowStockCount:
+          type: integer
+        movementsToday:
+          type: integer
+      required:
+        - branchId
+        - branchName
+        - totalItems
+        - lowStockCount
+        - movementsToday
+
+    RecentMovement:
+      type: object
+      properties:
+        id:
+          type: integer
+        itemName:
+          type: string
+        branchName:
+          type: string
+        userName:
+          type: string
+        type:
+          $ref: "#/components/schemas/MovementType"
+        quantity:
+          type: number
+        unit:
+          $ref: "#/components/schemas/UnitType"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - itemName
+        - branchName
+        - userName
+        - type
+        - quantity
+        - unit
+        - createdAt
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+        totalLowStock:
+          type: integer
+        totalMissingToday:
+          type: number
+        totalDamagedToday:
+          type: number
+        branchOverviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/BranchOverview"
+        recentMovements:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentMovement"
+        lowStockAlerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/LowStockItem"
+        topUsedItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopUsedItem"
+      required:
+        - totalItems
+        - totalLowStock
+        - totalMissingToday
+        - totalDamagedToday
+        - branchOverviews
+        - recentMovements
+        - lowStockAlerts
+        - topUsedItems

@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "BakeryStock"
+version = "1.0.0"
+id = "artifacts/bakerystock"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24399
+
+[services.development]
+run = "pnpm --filter @workspace/bakerystock run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/bakerystock", "run", "build" ]
+publicDir = "artifacts/bakerystock/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24399"
+BASE_PATH = "/"
