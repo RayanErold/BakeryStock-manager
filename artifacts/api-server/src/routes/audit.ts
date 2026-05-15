@@ -14,7 +14,8 @@ router.get(["/audit", "/audit-logs"], requireAuth, requireOwner, async (req: any
     if (branchId) conditions.push(eq(auditLogsTable.branchId, parseInt(branchId as string)));
     if (userId) conditions.push(eq(auditLogsTable.userId, parseInt(userId as string)));
     if (itemId) conditions.push(eq(auditLogsTable.itemId, parseInt(itemId as string)));
-    if (movementType) conditions.push(eq(auditLogsTable.movementType, movementType as string));
+    type AuditMovementType = "stock_in" | "used_in_production" | "sold" | "damaged" | "missing_lost" | "returned";
+    if (movementType) conditions.push(eq(auditLogsTable.movementType, movementType as AuditMovementType));
     if (dateFrom) conditions.push(gte(auditLogsTable.timestamp, new Date(dateFrom as string)));
     if (dateTo) {
       const end = new Date(dateTo as string);

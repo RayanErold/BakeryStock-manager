@@ -38,6 +38,7 @@ router.post("/seed", requireAuth, requireOwner, async (_req: any, res: any) => {
     const items = await db
       .insert(inventoryItemsTable)
       .values([
+        // Douala
         { name: "Farine de blé", category: "Ingrédients de base", quantity: "250", unit: "kg", minThreshold: "50", branchId: douala.id },
         { name: "Sucre", category: "Ingrédients de base", quantity: "80", unit: "kg", minThreshold: "20", branchId: douala.id },
         { name: "Beurre", category: "Produits laitiers", quantity: "30", unit: "kg", minThreshold: "10", branchId: douala.id },
@@ -45,6 +46,7 @@ router.post("/seed", requireAuth, requireOwner, async (_req: any, res: any) => {
         { name: "Levure", category: "Ingrédients de base", quantity: "5", unit: "kg", minThreshold: "2", branchId: douala.id },
         { name: "Huile de palme", category: "Huiles & Graisses", quantity: "40", unit: "liters", minThreshold: "10", branchId: douala.id },
         { name: "Sachets pain", category: "Emballages", quantity: "3", unit: "boxes", minThreshold: "10", branchId: douala.id },
+        // Yaoundé
         { name: "Farine de blé", category: "Ingrédients de base", quantity: "180", unit: "kg", minThreshold: "50", branchId: yaounde.id },
         { name: "Sucre", category: "Ingrédients de base", quantity: "15", unit: "kg", minThreshold: "20", branchId: yaounde.id },
         { name: "Sel", category: "Ingrédients de base", quantity: "25", unit: "kg", minThreshold: "5", branchId: yaounde.id },
@@ -53,36 +55,55 @@ router.post("/seed", requireAuth, requireOwner, async (_req: any, res: any) => {
       ])
       .returning();
 
-    const movementsData = [
-      { itemId: items[0].id, branchId: douala.id, userId: staff1.id, type: "stock_in" as const, quantity: "100", note: "Livraison hebdomadaire" },
-      { itemId: items[0].id, branchId: douala.id, userId: staff1.id, type: "used_in_production" as const, quantity: "30", note: "Production pains du matin" },
-      { itemId: items[1].id, branchId: douala.id, userId: staff1.id, type: "used_in_production" as const, quantity: "15", note: "Production gâteaux" },
-      { itemId: items[3].id, branchId: douala.id, userId: staff1.id, type: "missing_lost" as const, quantity: "2", note: "Introuvables lors de l'inventaire" },
-      { itemId: items[2].id, branchId: douala.id, userId: staff1.id, type: "damaged" as const, quantity: "3", note: "Fondu - réfrigérateur en panne" },
-      { itemId: items[6].id, branchId: douala.id, userId: owner.id, type: "stock_in" as const, quantity: "5", note: "Achat d'urgence" },
-      { itemId: items[7].id, branchId: yaounde.id, userId: staff2.id, type: "stock_in" as const, quantity: "50", note: "Réapprovisionnement" },
-      { itemId: items[7].id, branchId: yaounde.id, userId: staff2.id, type: "used_in_production" as const, quantity: "40", note: "Production du jour" },
-      { itemId: items[8].id, branchId: yaounde.id, userId: staff2.id, type: "used_in_production" as const, quantity: "8", note: "Pâtisserie" },
-      { itemId: items[11].id, branchId: yaounde.id, userId: staff2.id, type: "missing_lost" as const, quantity: "0.5", note: "Manquant - investigation en cours" },
+    type MovementType = "stock_in" | "used_in_production" | "sold" | "damaged" | "missing_lost" | "returned";
+    const movementsData: Array<{ itemId: number; branchId: number; userId: number; type: MovementType; quantity: string; note: string }> = [
+      // Douala — 12 movements
+      { itemId: items[0].id, branchId: douala.id, userId: staff1.id, type: "stock_in", quantity: "100", note: "Livraison hebdomadaire farine" },
+      { itemId: items[0].id, branchId: douala.id, userId: staff1.id, type: "used_in_production", quantity: "30", note: "Production pains du matin" },
+      { itemId: items[0].id, branchId: douala.id, userId: staff1.id, type: "used_in_production", quantity: "25", note: "Production croissants" },
+      { itemId: items[1].id, branchId: douala.id, userId: staff1.id, type: "used_in_production", quantity: "15", note: "Production gâteaux" },
+      { itemId: items[1].id, branchId: douala.id, userId: staff1.id, type: "stock_in", quantity: "20", note: "Réapprovisionnement sucre" },
+      { itemId: items[2].id, branchId: douala.id, userId: staff1.id, type: "damaged", quantity: "3", note: "Fondu - réfrigérateur en panne" },
+      { itemId: items[3].id, branchId: douala.id, userId: staff1.id, type: "missing_lost", quantity: "2", note: "Introuvables lors de l'inventaire" },
+      { itemId: items[3].id, branchId: douala.id, userId: staff1.id, type: "used_in_production", quantity: "4", note: "Gâteaux du jour" },
+      { itemId: items[4].id, branchId: douala.id, userId: staff1.id, type: "used_in_production", quantity: "1", note: "Fournée pain blanc" },
+      { itemId: items[5].id, branchId: douala.id, userId: owner.id, type: "stock_in", quantity: "20", note: "Achat mensuel huile" },
+      { itemId: items[6].id, branchId: douala.id, userId: owner.id, type: "stock_in", quantity: "5", note: "Achat d'urgence sachets" },
+      { itemId: items[6].id, branchId: douala.id, userId: staff1.id, type: "sold", quantity: "2", note: "Vente sachets au détail" },
+      // Yaoundé — 8 movements
+      { itemId: items[7].id, branchId: yaounde.id, userId: staff2.id, type: "stock_in", quantity: "50", note: "Réapprovisionnement farine" },
+      { itemId: items[7].id, branchId: yaounde.id, userId: staff2.id, type: "used_in_production", quantity: "40", note: "Production du jour" },
+      { itemId: items[8].id, branchId: yaounde.id, userId: staff2.id, type: "used_in_production", quantity: "8", note: "Pâtisserie" },
+      { itemId: items[8].id, branchId: yaounde.id, userId: staff2.id, type: "stock_in", quantity: "10", note: "Commande urgente sucre" },
+      { itemId: items[10].id, branchId: yaounde.id, userId: staff2.id, type: "used_in_production", quantity: "5", note: "Brioches au lait" },
+      { itemId: items[11].id, branchId: yaounde.id, userId: staff2.id, type: "missing_lost", quantity: "0.5", note: "Manquant - investigation en cours" },
+      { itemId: items[11].id, branchId: yaounde.id, userId: staff2.id, type: "stock_in", quantity: "2", note: "Nouvelle levure achetée" },
+      { itemId: items[9].id, branchId: yaounde.id, userId: staff2.id, type: "used_in_production", quantity: "3", note: "Pain de mie" },
     ];
 
     const movements = await db
       .insert(stockMovementsTable)
-      .values(movementsData.map((m) => ({ ...m, quantity: String(m.quantity) })))
+      .values(movementsData)
       .returning();
 
     await db.insert(auditLogsTable).values(
-      movementsData.map((m, i) => ({
+      movementsData.map((m) => ({
         userId: m.userId,
         branchId: m.branchId,
         itemId: m.itemId,
-        quantityChange: String(m.quantity),
+        quantityChange: m.quantity,
         movementType: m.type,
         note: m.note,
       })),
     );
 
-    return res.json({ message: "Seeded successfully", branches: 2, items: items.length, movements: movements.length });
+    return res.json({
+      message: "Seeded successfully",
+      branches: 2,
+      users: 3,
+      items: items.length,
+      movements: movements.length,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

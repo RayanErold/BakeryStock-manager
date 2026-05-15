@@ -61,6 +61,7 @@ export default function InventoryPage() {
 
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
@@ -159,7 +160,8 @@ export default function InventoryPage() {
       item.name.toLowerCase().includes(search.toLowerCase()) ||
       item.category.toLowerCase().includes(search.toLowerCase());
     const matchBranch = branchFilter === "all" || String(item.branchId) === branchFilter;
-    return matchSearch && matchBranch;
+    const matchCategory = categoryFilter === "all" || item.category === categoryFilter;
+    return matchSearch && matchBranch && matchCategory;
   });
 
   const isLow = (item: InventoryItem) => Number(item.quantity) <= Number(item.minThreshold);
@@ -190,6 +192,17 @@ export default function InventoryPage() {
             className="pl-9"
           />
         </div>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder={t(lang, "category")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{lang === "fr" ? "Toutes catégories" : "All Categories"}</SelectItem>
+            {CATEGORIES.map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {isOwner && branches.length > 0 && (
           <Select value={branchFilter} onValueChange={setBranchFilter}>
             <SelectTrigger className="w-44">

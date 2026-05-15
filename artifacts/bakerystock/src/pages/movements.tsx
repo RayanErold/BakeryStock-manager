@@ -19,7 +19,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -87,6 +87,8 @@ export default function MovementsPage() {
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({
     itemId: "",
@@ -139,7 +141,10 @@ export default function MovementsPage() {
       m.branchName.toLowerCase().includes(search.toLowerCase()) ||
       m.userName.toLowerCase().includes(search.toLowerCase());
     const matchType = typeFilter === "all" || m.type === typeFilter;
-    return matchSearch && matchType;
+    const movDate = new Date(m.createdAt);
+    const matchFrom = !dateFrom || movDate >= new Date(dateFrom);
+    const matchTo = !dateTo || movDate <= new Date(dateTo + "T23:59:59");
+    return matchSearch && matchType && matchFrom && matchTo;
   });
 
   const branchItems = form.branchId
@@ -204,6 +209,24 @@ export default function MovementsPage() {
             ))}
           </SelectContent>
         </Select>
+        <div className="flex items-center gap-1.5">
+          <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-36 text-sm"
+            title={t(lang, "dateFrom")}
+          />
+          <span className="text-muted-foreground text-sm">→</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-36 text-sm"
+            title={t(lang, "dateTo")}
+          />
+        </div>
       </div>
 
       {isLoading ? (

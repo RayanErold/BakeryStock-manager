@@ -6,7 +6,7 @@ import {
   branchesTable,
   usersTable,
 } from "@workspace/db";
-import { eq, and, gte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, desc } from "drizzle-orm";
 import { requireAuth } from "./auth";
 
 const router = Router();
@@ -19,22 +19,33 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, r
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const itemsQuery = db
-      .select({
-        id: inventoryItemsTable.id,
-        name: inventoryItemsTable.name,
-        quantity: inventoryItemsTable.quantity,
-        minThreshold: inventoryItemsTable.minThreshold,
-        unit: inventoryItemsTable.unit,
-        branchId: inventoryItemsTable.branchId,
-        branchName: branchesTable.name,
-      })
-      .from(inventoryItemsTable)
-      .leftJoin(branchesTable, eq(inventoryItemsTable.branchId, branchesTable.id));
-
+    // Items query
     const allItems = branchFilter
-      ? await itemsQuery.where(eq(inventoryItemsTable.branchId, branchFilter))
-      : await itemsQuery;
+      ? await db
+          .select({
+            id: inventoryItemsTable.id,
+            name: inventoryItemsTable.name,
+            quantity: inventoryItemsTable.quantity,
+            minThreshold: inventoryItemsTable.minThreshold,
+            unit: inventoryItemsTable.unit,
+            branchId: inventoryItemsTable.branchId,
+            branchName: branchesTable.name,
+          })
+          .from(inventoryItemsTable)
+          .leftJoin(branchesTable, eq(inventoryItemsTable.branchId, branchesTable.id))
+          .where(eq(inventoryItemsTable.branchId, branchFilter))
+      : await db
+          .select({
+            id: inventoryItemsTable.id,
+            name: inventoryItemsTable.name,
+            quantity: inventoryItemsTable.quantity,
+            minThreshold: inventoryItemsTable.minThreshold,
+            unit: inventoryItemsTable.unit,
+            branchId: inventoryItemsTable.branchId,
+            branchName: branchesTable.name,
+          })
+          .from(inventoryItemsTable)
+          .leftJoin(branchesTable, eq(inventoryItemsTable.branchId, branchesTable.id));
 
     const totalItems = allItems.length;
     const lowStockAlerts = allItems.filter(
@@ -42,7 +53,12 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, r
     );
     const totalLowStock = lowStockAlerts.length;
 
-    const todayMovementsQuery = db
+    // Today's movements (single query, build conditions upfront)
+    const todayConditions = branchFilter
+      ? and(gte(stockMovementsTable.createdAt, today), eq(stockMovementsTable.branchId, branchFilter))
+      : gte(stockMovementsTable.createdAt, today);
+
+    const todayMovements = await db
       .select({
         id: stockMovementsTable.id,
         itemId: stockMovementsTable.itemId,
@@ -60,26 +76,22 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, r
       .leftJoin(inventoryItemsTable, eq(stockMovementsTable.itemId, inventoryItemsTable.id))
       .leftJoin(branchesTable, eq(stockMovementsTable.branchId, branchesTable.id))
       .leftJoin(usersTable, eq(stockMovementsTable.userId, usersTable.id))
-      .where(gte(stockMovementsTable.createdAt, today));
+      .where(todayConditions);
 
-    const todayMovements = branchFilter
-      ? await todayMovementsQuery.where(
-          and(
-            gte(stockMovementsTable.createdAt, today),
-            eq(stockMovementsTable.branchId, branchFilter),
-          ),
-        )
-      : await todayMovementsQuery;
+    type MovementRow = (typeof todayMovements)[0];
 
     const totalMissingToday = todayMovements
-      .filter((m) => m.type === "missing_lost")
-      .reduce((sum, m) => sum + parseFloat(m.quantity), 0);
+      .filter((m: MovementRow) => m.type === "missing_lost")
+      .reduce((sum: number, m: MovementRow) => sum + parseFloat(m.quantity ?? "0"), 0);
 
     const totalDamagedToday = todayMovements
-      .filter((m) => m.type === "damaged")
-      .reduce((sum, m) => sum + parseFloat(m.quantity), 0);
+      .filter((m: MovementRow) => m.type === "damaged")
+      .reduce((sum: number, m: MovementRow) => sum + parseFloat(m.quantity ?? "0"), 0);
 
-    const recentMovementsQuery = db
+    // Recent movements
+    const recentConditions = branchFilter ? eq(stockMovementsTable.branchId, branchFilter) : undefined;
+
+    const recentMovements = await db
       .select({
         id: stockMovementsTable.id,
         itemName: inventoryItemsTable.name,
@@ -94,23 +106,21 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, r
       .leftJoin(inventoryItemsTable, eq(stockMovementsTable.itemId, inventoryItemsTable.id))
       .leftJoin(branchesTable, eq(stockMovementsTable.branchId, branchesTable.id))
       .leftJoin(usersTable, eq(stockMovementsTable.userId, usersTable.id))
+      .where(recentConditions)
       .orderBy(desc(stockMovementsTable.createdAt))
       .limit(10);
 
-    const recentMovements = branchFilter
-      ? await recentMovementsQuery.where(eq(stockMovementsTable.branchId, branchFilter))
-      : await recentMovementsQuery;
-
-    const branches = await db.select().from(branchesTable);
+    const allBranches = await db.select().from(branchesTable);
     const branchOverviews = await Promise.all(
-      branches.map(async (branch) => {
+      allBranches.map(async (branch) => {
         const branchItems = allItems.filter((i) => i.branchId === branch.id);
         const branchLowStock = branchItems.filter(
           (i) => parseFloat(i.quantity) <= parseFloat(i.minThreshold),
         ).length;
 
+        type TodayRow = (typeof todayMovements)[0];
         const branchMovementsToday = todayMovements.filter(
-          (m) => m.branchId === branch.id,
+          (m: TodayRow) => m.branchId === branch.id,
         ).length;
 
         return {
@@ -123,7 +133,7 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, r
       }),
     );
 
-    const usageMap: Record<number, { itemId: number; itemName: string; totalUsed: number; unit: string }> = {};
+    // Top consumption
     const allProductionMovements = await db
       .select({
         itemId: stockMovementsTable.itemId,
@@ -135,52 +145,29 @@ router.get(["/dashboard", "/dashboard/summary"], requireAuth, async (req: any, r
       .leftJoin(inventoryItemsTable, eq(stockMovementsTable.itemId, inventoryItemsTable.id))
       .where(eq(stockMovementsTable.type, "used_in_production"));
 
+    const usageMap: Record<number, { itemId: number; itemName: string; totalUsed: number; unit: string }> = {};
     for (const m of allProductionMovements) {
+      if (m.itemId === null) continue;
       if (!usageMap[m.itemId]) {
-        usageMap[m.itemId] = {
-          itemId: m.itemId,
-          itemName: m.itemName ?? "Unknown",
-          totalUsed: 0,
-          unit: m.unit ?? "pieces",
-        };
+        usageMap[m.itemId] = { itemId: m.itemId, itemName: m.itemName ?? "", totalUsed: 0, unit: m.unit ?? "" };
       }
-      usageMap[m.itemId].totalUsed += parseFloat(m.quantity);
+      usageMap[m.itemId].totalUsed += parseFloat(m.quantity ?? "0");
     }
 
-    const topUsedItems = Object.values(usageMap)
+    const topConsumption = Object.values(usageMap)
       .sort((a, b) => b.totalUsed - a.totalUsed)
       .slice(0, 5);
 
     return res.json({
       totalItems,
-      lowStockCount: totalLowStock,
-      missingToday: totalMissingToday,
-      damagedToday: totalDamagedToday,
-      movementsToday: todayMovements.length,
-      branchSummary: branchOverviews.map((b) => ({
-        id: b.branchId,
-        name: b.branchName,
-        city: "",
-        itemCount: b.totalItems,
-        lowStockCount: b.lowStockCount,
-      })),
-      recentMovements: recentMovements.map((m) => ({
-        ...m,
-        itemName: m.itemName ?? "Unknown",
-        branchName: m.branchName ?? "Unknown",
-        userName: m.userName ?? "Unknown",
-        unit: m.unit ?? "pieces",
-      })),
-      lowStockItems: lowStockAlerts.map((i) => ({
-        id: i.id,
-        name: i.name,
-        quantity: i.quantity,
-        minThreshold: i.minThreshold,
-        unit: i.unit,
-        branchId: i.branchId,
-        branchName: i.branchName ?? null,
-      })),
-      topUsedItems: topUsedItems.map((i) => ({ name: i.itemName, totalUsed: i.totalUsed })),
+      totalLowStock,
+      totalMissingToday,
+      totalDamagedToday,
+      totalMovementsToday: todayMovements.length,
+      recentMovements,
+      lowStockAlerts,
+      branchOverviews,
+      topConsumption,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
