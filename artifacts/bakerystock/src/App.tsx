@@ -56,7 +56,14 @@ function Redirect({ to }: { to: string }) {
   return null;
 }
 
-function AuthGuard({ children }: { children: React.ReactNode }) {
+function AuthGuard({
+  children,
+  ownerOnly = false,
+}: {
+  children: React.ReactNode;
+  /** When true, staff members are redirected to /dashboard. */
+  ownerOnly?: boolean;
+}) {
   const { data: user, isLoading, isError } = useCurrentUser();
   const { lang } = useAppContext();
   const [location] = useLocation();
@@ -85,8 +92,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (isError || !user) {
-    // Preserve the original path in the redirect so we can return after login
     return <Redirect to={`/login${location !== "/" ? `?next=${encodeURIComponent(location)}` : ""}`} />;
+  }
+
+  // Client-side role guard: staff cannot access owner-only pages
+  if (ownerOnly && user.role !== "owner") {
+    return <Redirect to="/dashboard" />;
   }
 
   return (
@@ -128,22 +139,22 @@ function AppRoutes() {
         </AuthGuard>
       </Route>
       <Route path="/audit">
-        <AuthGuard>
+        <AuthGuard ownerOnly>
           <AuditPage />
         </AuthGuard>
       </Route>
       <Route path="/branches">
-        <AuthGuard>
+        <AuthGuard ownerOnly>
           <BranchesPage />
         </AuthGuard>
       </Route>
       <Route path="/staff">
-        <AuthGuard>
+        <AuthGuard ownerOnly>
           <StaffPage />
         </AuthGuard>
       </Route>
       <Route path="/reports">
-        <AuthGuard>
+        <AuthGuard ownerOnly>
           <ReportsPage />
         </AuthGuard>
       </Route>
