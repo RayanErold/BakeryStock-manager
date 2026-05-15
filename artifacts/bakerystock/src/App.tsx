@@ -1,4 +1,5 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { useEffect } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { AppProvider } from "@/contexts/AppContext";
@@ -16,18 +17,53 @@ import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { useAppContext } from "@/contexts/AppContext";
 import { t } from "@/lib/i18n";
+import { useClerk } from "@clerk/react";
 import { ClerkTokenBridge } from "@/components/ClerkTokenBridge";
 
 const IS_CLERK_MODE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-function AppRoutes() {
+// Module-level ref populated by ClerkSignOutBridge when Clerk is active.
+let _clerkSignOut: ((opts?: { redirectUrl?: string }) => Promise<void>) | null = null;
+
+/**
+ * Registers the Clerk signOut function so it can be called from any sign-out
+ * handler without having to call useClerk() in non-Clerk code paths.
+ *
+ * This component is only rendered when IS_CLERK_MODE is true (i.e. inside
+ * ClerkProvider), so useClerk() is always called within its required context.
+ * When IS_CLERK_MODE is false the component is never mounted and hooks are
+ * never invoked — React's rules-of-hooks apply per render, not per import.
+ */
+function ClerkSignOutBridge() {
+  const { signOut } = useClerk();
+
+  useEffect(() => {
+    _clerkSignOut = signOut;
+    return () => {
+      _clerkSignOut = null;
+    };
+  }, [signOut]);
+
+  return null;
+}
+
+/** Navigate to a route without re-mounting the whole app. */
+function Redirect({ to }: { to: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation(to);
+  }, [to, setLocation]);
+  return null;
+}
+
+function AuthGuard({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading, isError } = useCurrentUser();
   const { lang } = useAppContext();
+  const [location] = useLocation();
 
-  const handleSignOut = () => {
-    if (IS_CLERK_MODE) {
-      // Clerk manages session; redirect to Clerk's sign-out flow
-      window.location.href = "/?clerk_sign_out=1";
+  const handleSignOut = async () => {
+    if (IS_CLERK_MODE && _clerkSignOut) {
+      await _clerkSignOut({ redirectUrl: "/login" });
     } else {
       localStorage.removeItem("dev_clerk_id");
       queryClient.clear();
@@ -49,28 +85,90 @@ function AppRoutes() {
   }
 
   if (isError || !user) {
-    return (
-      <LoginPage
-        onLogin={() => {
-          queryClient.invalidateQueries({ queryKey: ["current-user"] });
-        }}
-      />
-    );
+    // Preserve the original path in the redirect so we can return after login
+    return <Redirect to={`/login${location !== "/" ? `?next=${encodeURIComponent(location)}` : ""}`} />;
   }
 
   return (
     <Layout user={user} onSignOut={handleSignOut}>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/inventory" component={InventoryPage} />
-        <Route path="/movements" component={MovementsPage} />
-        <Route path="/audit" component={AuditPage} />
-        <Route path="/branches" component={BranchesPage} />
-        <Route path="/staff" component={StaffPage} />
-        <Route path="/reports" component={ReportsPage} />
-        <Route component={NotFound} />
-      </Switch>
+      {children}
     </Layout>
+  );
+}
+
+function AppRoutes() {
+  return (
+    <Switch>
+      {/* Public login route */}
+      <Route path="/login">
+        <LoginWithRedirect />
+      </Route>
+
+      {/* Dashboard — explicit /dashboard path */}
+      <Route path="/dashboard">
+        <AuthGuard>
+          <Dashboard />
+        </AuthGuard>
+      </Route>
+
+      {/* Root redirects to /dashboard */}
+      <Route path="/">
+        <Redirect to="/dashboard" />
+      </Route>
+
+      {/* Authenticated pages */}
+      <Route path="/inventory">
+        <AuthGuard>
+          <InventoryPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/movements">
+        <AuthGuard>
+          <MovementsPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/audit">
+        <AuthGuard>
+          <AuditPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/branches">
+        <AuthGuard>
+          <BranchesPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/staff">
+        <AuthGuard>
+          <StaffPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/reports">
+        <AuthGuard>
+          <ReportsPage />
+        </AuthGuard>
+      </Route>
+
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+/** Login page that redirects to /dashboard (or ?next=) if already authenticated. */
+function LoginWithRedirect() {
+  const { data: user, isLoading } = useCurrentUser();
+  const [location] = useLocation();
+  const params = new URLSearchParams(location.split("?")[1] ?? "");
+  const next = params.get("next") ?? "/dashboard";
+
+  if (isLoading) return null;
+  if (user) return <Redirect to={next} />;
+
+  return (
+    <LoginPage
+      onLogin={() => {
+        queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      }}
+    />
   );
 }
 
@@ -78,8 +176,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppProvider>
-        {/* Register Clerk JWT getter only when running under ClerkProvider */}
+        {/* Register Clerk JWT getter — mounted only when ClerkProvider is in the tree */}
         {IS_CLERK_MODE && <ClerkTokenBridge />}
+        {/* Register Clerk signOut function for use in handleSignOut */}
+        {IS_CLERK_MODE && <ClerkSignOutBridge />}
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AppRoutes />
         </WouterRouter>
