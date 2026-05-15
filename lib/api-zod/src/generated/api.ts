@@ -35,10 +35,10 @@ export const GetMeResponse = zod.object({
  * @summary Sync Clerk user to local DB on first login
  */
 export const SyncUserBody = zod.object({
-  "clerkId": zod.string(),
-  "name": zod.string(),
-  "email": zod.string()
-})
+  "clerkId": zod.string().optional(),
+  "name": zod.string().optional(),
+  "email": zod.string().optional()
+}).describe('All fields are optional. The backend resolves identity from the verified\nJWT (clerkUserId) and fetches name + email from the Clerk API when\nCLERK_SECRET_KEY is configured. Body fields are only used as fallback\nin dev\/demo mode when Clerk is not provisioned.\n')
 
 export const SyncUserResponse = zod.object({
   "id": zod.number(),

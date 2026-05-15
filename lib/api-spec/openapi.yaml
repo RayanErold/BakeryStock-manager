@@ -628,6 +628,11 @@ components:
 
     SyncUserRequest:
       type: object
+      description: |
+        All fields are optional. The backend resolves identity from the verified
+        JWT (clerkUserId) and fetches name + email from the Clerk API when
+        CLERK_SECRET_KEY is configured. Body fields are only used as fallback
+        in dev/demo mode when Clerk is not provisioned.
       properties:
         clerkId:
           type: string
@@ -635,10 +640,6 @@ components:
           type: string
         email:
           type: string
-      required:
-        - clerkId
-        - name
-        - email
 
     CreateUserRequest:
       type: object

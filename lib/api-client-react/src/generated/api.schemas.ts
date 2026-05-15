@@ -67,10 +67,17 @@ export interface User {
   createdAt: string;
 }
 
+/**
+ * All fields are optional. The backend resolves identity from the verified
+JWT (clerkUserId) and fetches name + email from the Clerk API when
+CLERK_SECRET_KEY is configured. Body fields are only used as fallback
+in dev/demo mode when Clerk is not provisioned.
+
+ */
 export interface SyncUserRequest {
-  clerkId: string;
-  name: string;
-  email: string;
+  clerkId?: string;
+  name?: string;
+  email?: string;
 }
 
 export interface CreateUserRequest {

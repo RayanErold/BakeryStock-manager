@@ -138,6 +138,12 @@ router.post("/movements", requireAuth, async (req: AuthedRequest, res: Response)
     if (currentUser.role === "staff") branchId = currentUser.branchId!;
     if (!branchId) return res.status(400).json({ error: "branchId is required" });
 
+    // Validate quantity: must be a finite positive number
+    const parsedQty = parseFloat(String(quantity));
+    if (!Number.isFinite(parsedQty) || parsedQty <= 0) {
+      return res.status(400).json({ error: "quantity must be a positive number" });
+    }
+
     const [item] = await db
       .select()
       .from(inventoryItemsTable)
@@ -158,7 +164,7 @@ router.post("/movements", requireAuth, async (req: AuthedRequest, res: Response)
       })
       .returning();
 
-    const delta = parseFloat(String(quantity));
+    const delta = parsedQty;
     const isDeduction = !["stock_in", "returned"].includes(type);
     const newQty = isDeduction
       ? Math.max(0, parseFloat(item.quantity) - delta)
@@ -174,7 +180,7 @@ router.post("/movements", requireAuth, async (req: AuthedRequest, res: Response)
       branchId,
       itemId,
       movementType: type,
-      quantityChange: String(quantity),
+      quantityChange: String(parsedQty),
       note: note ?? null,
     });
 
@@ -193,12 +199,31 @@ router.put("/movements/:id", requireAuth, async (req: AuthedRequest, res: Respon
     if (currentUser.role !== "owner") return res.status(403).json({ error: "Forbidden: owner only" });
 
     const { note } = req.body as { note?: string };
+
+    // Fetch before update for audit context
+    const [existing] = await db
+      .select()
+      .from(stockMovementsTable)
+      .where(eq(stockMovementsTable.id, id))
+      .limit(1);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
     const [updated] = await db
       .update(stockMovementsTable)
       .set({ note: note ?? null })
       .where(eq(stockMovementsTable.id, id))
       .returning();
-    if (!updated) return res.status(404).json({ error: "Not found" });
+
+    // Audit: record the note edit (quantity unchanged)
+    await db.insert(auditLogsTable).values({
+      userId: currentUser.id,
+      branchId: existing.branchId,
+      itemId: existing.itemId,
+      movementType: existing.type,
+      quantityChange: existing.quantity,
+      note: `[note edited] ${note ?? ""}`,
+    });
+
     return res.json(updated);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal server error";
@@ -213,7 +238,26 @@ router.delete("/movements/:id", requireAuth, async (req: AuthedRequest, res: Res
     if (!currentUser) return res.status(401).json({ error: "User not found" });
     if (currentUser.role !== "owner") return res.status(403).json({ error: "Forbidden: owner only" });
 
+    // Fetch before delete for audit record
+    const [existing] = await db
+      .select()
+      .from(stockMovementsTable)
+      .where(eq(stockMovementsTable.id, id))
+      .limit(1);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
     await db.delete(stockMovementsTable).where(eq(stockMovementsTable.id, id));
+
+    // Audit: record the deletion so the action is traceable
+    await db.insert(auditLogsTable).values({
+      userId: currentUser.id,
+      branchId: existing.branchId,
+      itemId: existing.itemId,
+      movementType: existing.type,
+      quantityChange: existing.quantity,
+      note: `[movement deleted] original note: ${existing.note ?? ""}`,
+    });
+
     return res.status(204).send();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal server error";
