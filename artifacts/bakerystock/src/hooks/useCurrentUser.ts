@@ -32,7 +32,7 @@ async function fetchCurrentUser(): Promise<CurrentUser> {
       msg.includes("Not Found") ||
       msg.includes("User not found");
 
-    if (isNotFound && import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
+    if (isNotFound) {
       // Backend reads name + email from Clerk API using the verified JWT clerkUserId.
       // No user data needs to be sent from the browser.
       await api.post("/auth/sync", {});

@@ -61,12 +61,11 @@ const reportLabels: Record<ReportType, { en: string; fr: string; descEn: string;
   },
 };
 
-/** Build auth headers using Clerk token when available, falling back to dev header. */
+/** Build auth headers using the Clerk session token. */
 async function reportAuthHeaders(): Promise<Record<string, string>> {
   const token = await getAuthToken();
   if (token) return { Authorization: `Bearer ${token}` };
-  const devId = localStorage.getItem("dev_clerk_id");
-  return devId ? { "X-Dev-User-Id": devId } : {};
+  return {};
 }
 
 export default function ReportsPage() {

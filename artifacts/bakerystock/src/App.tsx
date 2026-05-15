@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
@@ -13,39 +13,80 @@ import AuditPage from "@/pages/audit";
 import BranchesPage from "@/pages/branches";
 import StaffPage from "@/pages/staff";
 import ReportsPage from "@/pages/reports";
-import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { useAppContext } from "@/contexts/AppContext";
 import { t } from "@/lib/i18n";
-import { useClerk } from "@clerk/react";
+import { ClerkProvider, SignIn, SignUp, useClerk } from "@clerk/react";
+import { publishableKeyFromHost } from "@clerk/react/internal";
+import { shadcn } from "@clerk/themes";
+import { useQueryClient as useTanstackQueryClient } from "@tanstack/react-query";
 import { ClerkTokenBridge } from "@/components/ClerkTokenBridge";
 
-const IS_CLERK_MODE = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-// Module-level ref populated by ClerkSignOutBridge when Clerk is active.
-let _clerkSignOut: ((opts?: { redirectUrl?: string }) => Promise<void>) | null = null;
+const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+  ? publishableKeyFromHost(
+      window.location.hostname,
+      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+    )
+  : undefined;
 
-/**
- * Registers the Clerk signOut function so it can be called from any sign-out
- * handler without having to call useClerk() in non-Clerk code paths.
- *
- * This component is only rendered when IS_CLERK_MODE is true (i.e. inside
- * ClerkProvider), so useClerk() is always called within its required context.
- * When IS_CLERK_MODE is false the component is never mounted and hooks are
- * never invoked — React's rules-of-hooks apply per render, not per import.
- */
-function ClerkSignOutBridge() {
-  const { signOut } = useClerk();
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 
-  useEffect(() => {
-    _clerkSignOut = signOut;
-    return () => {
-      _clerkSignOut = null;
-    };
-  }, [signOut]);
-
-  return null;
+function stripBase(path: string): string {
+  return basePath && path.startsWith(basePath)
+    ? path.slice(basePath.length) || "/"
+    : path;
 }
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: "clerk",
+  options: {
+    logoPlacement: "inside" as const,
+    logoLinkUrl: basePath || "/",
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: "#D97706",
+    colorForeground: "#78350F",
+    colorMutedForeground: "#92400E",
+    colorDanger: "#DC2626",
+    colorBackground: "#FFFBEB",
+    colorInput: "#FEF3C7",
+    colorInputForeground: "#78350F",
+    colorNeutral: "#D6D3D1",
+    fontFamily: "Outfit, sans-serif",
+    borderRadius: "0.75rem",
+  },
+  elements: {
+    rootBox: "w-full flex justify-center",
+    cardBox: "bg-amber-50 rounded-2xl w-[440px] max-w-full overflow-hidden shadow-lg border border-amber-100",
+    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    headerTitle: "text-amber-900 font-bold",
+    headerSubtitle: "text-amber-700",
+    socialButtonsBlockButtonText: "text-amber-900",
+    formFieldLabel: "text-amber-800",
+    footerActionLink: "text-amber-600",
+    footerActionText: "text-amber-700",
+    dividerText: "text-amber-600",
+    identityPreviewEditButton: "text-amber-600",
+    formFieldSuccessText: "text-green-600",
+    alertText: "text-amber-900",
+    logoBox: "mb-1",
+    logoImage: "w-12 h-12",
+    socialButtonsBlockButton: "border-amber-200 hover:bg-amber-100",
+    formButtonPrimary: "bg-amber-600 hover:bg-amber-700 text-white",
+    formFieldInput: "border-amber-200 bg-white text-amber-900",
+    footerAction: "bg-amber-50",
+    dividerLine: "bg-amber-200",
+    alert: "bg-amber-50 border-amber-200",
+    otpCodeFieldInput: "border-amber-200",
+    formFieldRow: "",
+    main: "",
+  },
+};
 
 /** Navigate to a route without re-mounting the whole app. */
 function Redirect({ to }: { to: string }) {
@@ -56,26 +97,82 @@ function Redirect({ to }: { to: string }) {
   return null;
 }
 
+function SignInPage() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-bold text-foreground">BakeryStock</h1>
+          <p className="text-muted-foreground text-sm">
+            Sign in to manage your bakery inventory
+          </p>
+        </div>
+        <SignIn
+          routing="path"
+          path={`${basePath}/sign-in`}
+          signUpUrl={`${basePath}/sign-up`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SignUpPage() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-bold text-foreground">BakeryStock</h1>
+          <p className="text-muted-foreground text-sm">
+            Create an account to get started
+          </p>
+        </div>
+        <SignUp
+          routing="path"
+          path={`${basePath}/sign-up`}
+          signInUrl={`${basePath}/sign-in`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const tanstackQueryClient = useTanstackQueryClient();
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (
+        prevUserIdRef.current !== undefined &&
+        prevUserIdRef.current !== userId
+      ) {
+        tanstackQueryClient.clear();
+      }
+      prevUserIdRef.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, tanstackQueryClient]);
+
+  return null;
+}
+
 function AuthGuard({
   children,
   ownerOnly = false,
 }: {
   children: React.ReactNode;
-  /** When true, staff members are redirected to /dashboard. */
   ownerOnly?: boolean;
 }) {
   const { data: user, isLoading, isError } = useCurrentUser();
   const { lang } = useAppContext();
+  const { signOut } = useClerk();
   const [location] = useLocation();
 
   const handleSignOut = async () => {
-    if (IS_CLERK_MODE && _clerkSignOut) {
-      await _clerkSignOut({ redirectUrl: "/login" });
-    } else {
-      localStorage.removeItem("dev_clerk_id");
-      queryClient.clear();
-      window.location.reload();
-    }
+    await signOut({ redirectUrl: `${basePath}/sign-in` });
   };
 
   if (isLoading) {
@@ -92,10 +189,10 @@ function AuthGuard({
   }
 
   if (isError || !user) {
-    return <Redirect to={`/login${location !== "/" ? `?next=${encodeURIComponent(location)}` : ""}`} />;
+    const next = location !== "/" ? `?next=${encodeURIComponent(location)}` : "";
+    return <Redirect to={`/sign-in${next}`} />;
   }
 
-  // Client-side role guard: staff cannot access owner-only pages
   if (ownerOnly && user.role !== "owner") {
     return <Redirect to="/dashboard" />;
   }
@@ -110,24 +207,19 @@ function AuthGuard({
 function AppRoutes() {
   return (
     <Switch>
-      {/* Public login route */}
-      <Route path="/login">
-        <LoginWithRedirect />
-      </Route>
+      <Route path="/sign-in/*?" component={SignInPage} />
+      <Route path="/sign-up/*?" component={SignUpPage} />
 
-      {/* Dashboard — explicit /dashboard path */}
       <Route path="/dashboard">
         <AuthGuard>
           <Dashboard />
         </AuthGuard>
       </Route>
 
-      {/* Root redirects to /dashboard */}
       <Route path="/">
         <Redirect to="/dashboard" />
       </Route>
 
-      {/* Authenticated pages */}
       <Route path="/inventory">
         <AuthGuard>
           <InventoryPage />
@@ -164,39 +256,72 @@ function AppRoutes() {
   );
 }
 
-/** Login page that redirects to /dashboard (or ?next=) if already authenticated. */
-function LoginWithRedirect() {
-  const { data: user, isLoading } = useCurrentUser();
-  const [location] = useLocation();
-  const params = new URLSearchParams(location.split("?")[1] ?? "");
-  const next = params.get("next") ?? "/dashboard";
+function ClerkNotConfigured() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-amber-50 p-8">
+      <div className="max-w-md text-center space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-amber-600 mx-auto flex items-center justify-center">
+          <span className="text-white font-bold text-2xl">BS</span>
+        </div>
+        <h1 className="text-xl font-bold text-amber-900">Clerk Not Configured</h1>
+        <p className="text-amber-700 text-sm">
+          The <code className="bg-amber-100 px-1 rounded">VITE_CLERK_PUBLISHABLE_KEY</code> environment
+          variable is missing. Open the <strong>Auth</strong> pane in the Replit toolbar to set up Clerk
+          authentication for BakeryStock.
+        </p>
+      </div>
+    </div>
+  );
+}
 
-  if (isLoading) return null;
-  if (user) return <Redirect to={next} />;
+function AppWithClerk() {
+  const [, setLocation] = useLocation();
+
+  if (!clerkPubKey) {
+    return <ClerkNotConfigured />;
+  }
 
   return (
-    <LoginPage
-      onLogin={() => {
-        queryClient.invalidateQueries({ queryKey: ["current-user"] });
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      appearance={clerkAppearance}
+      signInUrl={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      localization={{
+        signIn: {
+          start: {
+            title: "Welcome back",
+            subtitle: "Sign in to your BakeryStock account",
+          },
+        },
+        signUp: {
+          start: {
+            title: "Create your account",
+            subtitle: "Get started with BakeryStock",
+          },
+        },
       }}
-    />
+      routerPush={(to) => setLocation(stripBase(to))}
+      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+    >
+      <QueryClientProvider client={queryClient}>
+        <AppProvider>
+          <ClerkTokenBridge />
+          <ClerkQueryClientCacheInvalidator />
+          <AppRoutes />
+          <Toaster richColors position="top-right" />
+        </AppProvider>
+      </QueryClientProvider>
+    </ClerkProvider>
   );
 }
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppProvider>
-        {/* Register Clerk JWT getter — mounted only when ClerkProvider is in the tree */}
-        {IS_CLERK_MODE && <ClerkTokenBridge />}
-        {/* Register Clerk signOut function for use in handleSignOut */}
-        {IS_CLERK_MODE && <ClerkSignOutBridge />}
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <AppRoutes />
-        </WouterRouter>
-        <Toaster richColors position="top-right" />
-      </AppProvider>
-    </QueryClientProvider>
+    <WouterRouter base={basePath}>
+      <AppWithClerk />
+    </WouterRouter>
   );
 }
 
