@@ -1,0 +1,321 @@
+Build a modern micro SaaS app called “BakeryStock” for managing bakery inventory across multiple branches.
+
+PRIMARY GOAL:
+Help bakery owners replace paper-based inventory tracking, reduce theft, improve accountability, monitor stock in real time, and simplify daily bakery operations.
+
+The app is initially being built for a real bakery business operating in Cameroon, so the experience must be:
+- extremely user friendly
+- mobile-first
+- bilingual (French + English)
+- easy for non-technical staff
+- simple enough to use daily inside a bakery
+
+IMPORTANT:
+The app must be designed to work both:
+- as a responsive web app
+- and later deployable to Google Play Store and Apple App Store using React Native Expo or PWA-compatible architecture.
+
+Focus on creating an MVP that can realistically be used by bakery staff immediately.
+
+====================================
+TECH STACK
+====================================
+
+Frontend:
+- Next.js
+- Tailwind CSS
+
+Backend:
+- Supabase database
+- Supabase authentication
+
+Architecture:
+- Mobile-first responsive UI
+- PWA-ready structure
+- Easy future migration to mobile apps
+
+Deployment:
+- Replit compatible
+- Vercel deployment ready
+
+====================================
+LANGUAGE SUPPORT
+====================================
+
+The entire application must support:
+- English
+- French
+
+Add language toggle:
+- EN / FR
+
+French translations should feel natural for French-speaking African users.
+
+Examples:
+- Inventory → Inventaire
+- Low Stock → Stock Faible
+- Missing Items → Articles manquants
+- Dashboard → Tableau de bord
+
+====================================
+USER TYPES
+====================================
+
+1. Owner/Admin
+2. Staff/Employee
+
+====================================
+AUTHENTICATION
+====================================
+
+Use Supabase authentication.
+
+Users can:
+- log in
+- log out
+
+Owner/Admin can:
+- create staff accounts
+- assign staff to bakery branches
+
+====================================
+BRANCH MANAGEMENT
+====================================
+
+Owner can create multiple bakery branches.
+
+Each branch should include:
+- branch name
+- city/location
+- branch manager
+- phone number
+
+Examples:
+- Douala Bakery
+- Yaoundé Central Bakery
+
+====================================
+INVENTORY MANAGEMENT
+====================================
+
+Owner/staff can create inventory items.
+
+Each item should include:
+- item name
+- category
+- quantity
+- unit type
+
+Supported unit types:
+- kg
+- bags
+- liters
+- boxes
+- pieces
+- trays
+
+Examples:
+- Flour
+- Sugar
+- Eggs
+- Butter
+- Bread Bags
+- Drinks
+- Yeast
+
+Each inventory item should also include:
+- minimum stock threshold
+- branch assignment
+
+====================================
+STOCK MOVEMENT SYSTEM
+====================================
+
+Staff must be able to record inventory movements.
+
+Movement types:
+- Stock In
+- Used in Production
+- Sold
+- Damaged
+- Missing/Lost
+- Returned
+
+Each movement must save:
+- item
+- branch
+- quantity
+- movement type
+- reason/note
+- user who performed action
+- date/time
+
+====================================
+ANTI-THEFT / ACCOUNTABILITY
+====================================
+
+VERY IMPORTANT FEATURE.
+
+Create a complete audit log system.
+
+Every inventory action must be traceable.
+
+Audit logs should show:
+- employee name
+- branch
+- inventory item
+- quantity changed
+- movement type
+- timestamp
+- note/reason
+
+This feature is one of the most important parts of the product because the bakery currently struggles with inventory theft and paper-based tracking.
+
+====================================
+OWNER DASHBOARD
+====================================
+
+Create a clean professional dashboard.
+
+Dashboard should show:
+- total inventory
+- low stock alerts
+- branch inventory overview
+- recent inventory movements
+- missing/lost stock
+- damaged stock
+- branch comparison
+- most used inventory items
+
+Use:
+- cards
+- simple charts
+- tables
+- color indicators
+
+Dashboard must remain simple and easy to understand.
+
+====================================
+LOW STOCK ALERTS
+====================================
+
+When inventory reaches minimum threshold:
+- show low stock warning
+
+Examples:
+- Flour running low
+- Sugar below threshold
+
+Create notification cards inside dashboard.
+
+====================================
+REPORTS
+====================================
+
+Create simple downloadable reports:
+- daily inventory report
+- weekly report
+- missing/lost stock report
+- damaged items report
+- branch activity report
+
+Reports should be exportable as PDF or CSV.
+
+====================================
+SEARCH + FILTERS
+====================================
+
+Add:
+- search inventory
+- filter by branch
+- filter by category
+- filter by date
+- filter by movement type
+
+====================================
+UI / UX DESIGN
+====================================
+
+The UI must feel:
+- modern
+- trustworthy
+- clean
+- professional
+- easy to navigate
+
+IMPORTANT:
+Most bakery employees are not technical.
+
+Use:
+- large buttons
+- simple navigation
+- minimal clutter
+- mobile-friendly layouts
+- readable typography
+- intuitive workflows
+
+The app should feel easy enough to use on:
+- Android phones
+- tablets
+- desktop computers
+
+====================================
+MOBILE APP READINESS
+====================================
+
+Structure the app so it can later become:
+- Android app
+- iPhone app
+
+Use:
+- PWA best practices
+- responsive layouts
+- touch-friendly components
+
+====================================
+DO NOT BUILD
+====================================
+
+Do not build:
+- AI features
+- payment systems
+- customer ordering
+- advanced accounting
+- complex analytics
+- payroll system
+
+Focus only on:
+- inventory tracking
+- anti-theft accountability
+- branch management
+- stock monitoring
+- reporting
+
+====================================
+DATABASE TABLES
+====================================
+
+Create tables for:
+- users
+- branches
+- inventory_items
+- stock_movements
+- audit_logs
+- reports
+
+====================================
+FINAL DELIVERABLE
+====================================
+
+Deliver:
+- complete working MVP
+- clean responsive UI
+- bilingual support (EN/FR)
+- Supabase schema
+- environment variable setup
+- README instructions
+- bakery demo data
+- Replit-ready structure
+- deploy-ready project
+
+The final product should feel like a real SaaS that could immediately be used inside a bakery business in Cameroon.
