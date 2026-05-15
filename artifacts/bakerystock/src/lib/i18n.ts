@@ -124,6 +124,13 @@ export const translations = {
     noFileSelected: "Please select a CSV file",
     csvParseError: "Could not parse CSV. Check the file format.",
     noMatchedRows: "No rows matched any inventory items",
+    inviteStaff: "Invite Staff",
+    inviteByEmail: "Invite by Email",
+    inviteEmailLabel: "Staff Member's Email",
+    sendInvite: "Send Invitation",
+    inviteSent: "Invitation sent! They will receive an email with a sign-up link.",
+    inviteError: "Failed to send invitation",
+    invitePending: "Pending invitation",
   },
   fr: {
     appName: "BakeryStock",
@@ -248,6 +255,13 @@ export const translations = {
     noFileSelected: "Veuillez sélectionner un fichier CSV",
     csvParseError: "Impossible de lire le CSV. Vérifiez le format du fichier.",
     noMatchedRows: "Aucune ligne ne correspond à un article de l'inventaire",
+    inviteStaff: "Inviter du personnel",
+    inviteByEmail: "Inviter par e-mail",
+    inviteEmailLabel: "E-mail du membre du personnel",
+    sendInvite: "Envoyer l'invitation",
+    inviteSent: "Invitation envoyée ! La personne recevra un e-mail avec un lien d'inscription.",
+    inviteError: "Échec de l'envoi de l'invitation",
+    invitePending: "Invitation en attente",
   },
 };
 

@@ -17,7 +17,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +57,8 @@ export default function StaffPage() {
   const [search, setSearch] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
   const [editMember, setEditMember] = useState<StaffMember | null>(null);
   const [editForm, setEditForm] = useState({ ...emptyEditForm });
   const [createForm, setCreateForm] = useState({ ...emptyCreateForm });
@@ -111,6 +113,26 @@ export default function StaffPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const inviteMutation = useMutation({
+    mutationFn: (email: string) =>
+      api.post("/auth/invite", { email }),
+    onSuccess: () => {
+      toast.success(t(lang, "inviteSent"));
+      setInviteOpen(false);
+      setInviteEmail("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const handleInvite = () => {
+    const trimmed = inviteEmail.trim();
+    if (!trimmed || !trimmed.includes("@")) {
+      toast.error(lang === "fr" ? "Adresse e-mail invalide" : "Please enter a valid email address");
+      return;
+    }
+    inviteMutation.mutate(trimmed);
+  };
+
   const openEdit = (member: StaffMember) => {
     setEditMember(member);
     setEditForm({
@@ -154,10 +176,16 @@ export default function StaffPage() {
             {filtered.length} {lang === "fr" ? "membres" : "members"}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2 shrink-0">
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">{t(lang, "addStaff")}</span>
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" onClick={() => setInviteOpen(true)} className="gap-2">
+            <Mail className="w-4 h-4" />
+            <span className="hidden sm:inline">{t(lang, "inviteStaff")}</span>
+          </Button>
+          <Button onClick={() => setCreateOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">{t(lang, "addStaff")}</span>
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
@@ -308,6 +336,39 @@ export default function StaffPage() {
             <Button variant="outline" onClick={() => setCreateOpen(false)}>{t(lang, "cancel")}</Button>
             <Button onClick={handleCreate} disabled={createMutation.isPending}>
               {t(lang, "save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite Staff Dialog */}
+      <Dialog open={inviteOpen} onOpenChange={(open) => { setInviteOpen(open); if (!open) setInviteEmail(""); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t(lang, "inviteByEmail")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {lang === "fr"
+                ? "Entrez l'adresse e-mail du membre du personnel. Il/Elle recevra un lien pour créer son compte."
+                : "Enter the staff member's email address. They will receive a link to create their account."}
+            </p>
+            <div>
+              <Label htmlFor="invite-email">{t(lang, "inviteEmailLabel")}</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="staff@bakery.cm"
+                onKeyDown={(e) => { if (e.key === "Enter") handleInvite(); }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInviteOpen(false)}>{t(lang, "cancel")}</Button>
+            <Button onClick={handleInvite} disabled={inviteMutation.isPending}>
+              {t(lang, "sendInvite")}
             </Button>
           </DialogFooter>
         </DialogContent>
