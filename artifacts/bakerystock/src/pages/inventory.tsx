@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppContext } from "@/contexts/AppContext";
@@ -18,10 +18,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, Pencil, Trash2, AlertTriangle, QrCode } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, AlertTriangle, QrCode, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import QRCodePrintDialog from "@/components/QRCodePrintDialog";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 interface InventoryItem {
   id: number;
@@ -69,6 +70,11 @@ export default function InventoryPage() {
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [qrItem, setQrItem] = useState<InventoryItem | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<number | null>(null);
+
+  const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: items = [], isLoading } = useQuery<InventoryItem[]>({
     queryKey: ["inventory"],
@@ -162,6 +168,34 @@ export default function InventoryPage() {
     }
   };
 
+  const handleBarcodeScan = useCallback((code: string) => {
+    setScannerOpen(false);
+    const found = items.find((item) => item.barcode === code);
+    if (!found) {
+      toast.error(t(lang, "barcodeNotFound"));
+      return;
+    }
+    setSearch("");
+    setBranchFilter("all");
+    setCategoryFilter("all");
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlightedId(found.id);
+    highlightTimerRef.current = setTimeout(() => setHighlightedId(null), 2500);
+    setTimeout(() => {
+      const el = itemRefs.current.get(found.id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 50);
+    toast.success(`${t(lang, "scanFoundPrefix")} ${found.name}`);
+  }, [items, lang]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
+
   const filtered = items.filter((item) => {
     const matchSearch =
       item.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -182,10 +216,21 @@ export default function InventoryPage() {
             {filtered.length} {lang === "fr" ? "articles" : "items"}
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-2 shrink-0">
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">{t(lang, "addItem")}</span>
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            onClick={() => setScannerOpen(true)}
+            className="gap-2"
+            title={t(lang, "scanBarcode")}
+          >
+            <ScanLine className="w-4 h-4" />
+            <span className="hidden sm:inline">{t(lang, "scanBarcode")}</span>
+          </Button>
+          <Button onClick={openCreate} className="gap-2">
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">{t(lang, "addItem")}</span>
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -240,68 +285,81 @@ export default function InventoryPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map((item) => (
-            <Card key={item.id} className={cn(isLow(item) && "border-orange-300 bg-orange-50/30")}>
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-foreground">{item.name}</span>
-                    {isLow(item) && (
-                      <Badge variant="outline" className="text-xs border-orange-300 text-orange-700 bg-orange-50">
-                        <AlertTriangle className="w-3 h-3 mr-1" />
-                        {t(lang, "lowStockLabel")}
-                      </Badge>
-                    )}
+            <div
+              key={item.id}
+              ref={(el) => {
+                if (el) itemRefs.current.set(item.id, el);
+                else itemRefs.current.delete(item.id);
+              }}
+            >
+              <Card
+                className={cn(
+                  isLow(item) && "border-orange-300 bg-orange-50/30",
+                  highlightedId === item.id && "ring-2 ring-primary ring-offset-1 border-primary bg-primary/5 transition-all duration-300"
+                )}
+              >
+                <CardContent className="p-4 flex items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-foreground">{item.name}</span>
+                      {isLow(item) && (
+                        <Badge variant="outline" className="text-xs border-orange-300 text-orange-700 bg-orange-50">
+                          <AlertTriangle className="w-3 h-3 mr-1" />
+                          {t(lang, "lowStockLabel")}
+                        </Badge>
+                      )}
+                      {item.barcode && (
+                        <Badge variant="outline" className="text-xs border-blue-300 text-blue-700 bg-blue-50">
+                          <QrCode className="w-3 h-3 mr-1" />
+                          {t(lang, "barcodeAssigned")}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
+                      <span>{item.category}</span>
+                      {item.branchName && <span>· {item.branchName}</span>}
+                      <span>· {lang === "fr" ? "min" : "min"}: {item.minThreshold} {item.unit}</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-bold text-lg text-foreground">
+                      {item.quantity}
+                      <span className="text-sm font-normal text-muted-foreground ml-1">{item.unit}</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-1">
                     {item.barcode && (
-                      <Badge variant="outline" className="text-xs border-blue-300 text-blue-700 bg-blue-50">
-                        <QrCode className="w-3 h-3 mr-1" />
-                        {t(lang, "barcodeAssigned")}
-                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-blue-600 hover:text-blue-700"
+                        title={t(lang, "printQR")}
+                        onClick={() => setQrItem(item)}
+                      >
+                        <QrCode className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(item)}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    {isOwner && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => {
+                          if (confirm(t(lang, "deleteConfirm"))) {
+                            deleteMutation.mutate(item.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
-                    <span>{item.category}</span>
-                    {item.branchName && <span>· {item.branchName}</span>}
-                    <span>· {lang === "fr" ? "min" : "min"}: {item.minThreshold} {item.unit}</span>
-                  </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="font-bold text-lg text-foreground">
-                    {item.quantity}
-                    <span className="text-sm font-normal text-muted-foreground ml-1">{item.unit}</span>
-                  </div>
-                </div>
-                <div className="shrink-0 flex items-center gap-1">
-                  {item.barcode && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-blue-600 hover:text-blue-700"
-                      title={t(lang, "printQR")}
-                      onClick={() => setQrItem(item)}
-                    >
-                      <QrCode className="w-4 h-4" />
-                    </Button>
-                  )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(item)}>
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                  {isOwner && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => {
-                        if (confirm(t(lang, "deleteConfirm"))) {
-                          deleteMutation.mutate(item.id);
-                        }
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           ))}
         </div>
       )}
@@ -401,6 +459,23 @@ export default function InventoryPage() {
               {t(lang, "save")}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Barcode Scanner Dialog */}
+      <Dialog open={scannerOpen} onOpenChange={setScannerOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ScanLine className="w-5 h-5" />
+              {t(lang, "scanBarcode")}
+            </DialogTitle>
+          </DialogHeader>
+          <BarcodeScanner
+            onScan={handleBarcodeScan}
+            onClose={() => setScannerOpen(false)}
+            label={t(lang, "scanToFind")}
+          />
         </DialogContent>
       </Dialog>
 

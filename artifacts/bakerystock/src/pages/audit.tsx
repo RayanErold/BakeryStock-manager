@@ -1,17 +1,26 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppContext } from "@/contexts/AppContext";
 import { t } from "@/lib/i18n";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search } from "lucide-react";
+import { Search, ScanLine, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { toast } from "sonner";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 interface AuditLog {
   id: number;
@@ -30,6 +39,12 @@ interface AuditLog {
 interface Branch {
   id: number;
   name: string;
+}
+
+interface InventoryItem {
+  id: number;
+  name: string;
+  barcode?: string | null;
 }
 
 const typeColors: Record<string, string> = {
@@ -60,6 +75,8 @@ export default function AuditPage() {
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannedItem, setScannedItem] = useState<{ id: number; name: string } | null>(null);
 
   const { data: logs = [], isLoading } = useQuery<AuditLog[]>({
     queryKey: ["audit"],
@@ -72,14 +89,41 @@ export default function AuditPage() {
     enabled: isOwner,
   });
 
+  const { data: items = [] } = useQuery<InventoryItem[]>({
+    queryKey: ["inventory"],
+    queryFn: () => api.get<InventoryItem[]>("/inventory"),
+  });
+
+  const handleBarcodeScan = useCallback((code: string) => {
+    setScannerOpen(false);
+    const found = items.find((item) => item.barcode === code);
+    if (!found) {
+      toast.error(t(lang, "barcodeNotFound"));
+      return;
+    }
+    setSearch("");
+    setScannedItem({ id: found.id, name: found.name });
+    toast.success(`${t(lang, "scanFilterPrefix")} ${found.name}`);
+  }, [items, lang]);
+
+  const clearScannedItem = () => setScannedItem(null);
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (scannedItem) setScannedItem(null);
+  };
+
   const filtered = logs.filter((log) => {
-    const matchSearch =
-      log.itemName?.toLowerCase().includes(search.toLowerCase()) ||
-      log.userName?.toLowerCase().includes(search.toLowerCase()) ||
-      log.branchName?.toLowerCase().includes(search.toLowerCase());
+    const matchItem = scannedItem
+      ? log.itemId === scannedItem.id
+      : (
+        log.itemName?.toLowerCase().includes(search.toLowerCase()) ||
+        log.userName?.toLowerCase().includes(search.toLowerCase()) ||
+        log.branchName?.toLowerCase().includes(search.toLowerCase())
+      );
     const matchBranch = branchFilter === "all" || String(log.branchId) === branchFilter;
     const matchType = typeFilter === "all" || log.movementType === typeFilter;
-    return matchSearch && matchBranch && matchType;
+    return matchItem && matchBranch && matchType;
   });
 
   return (
@@ -98,10 +142,29 @@ export default function AuditPage() {
           <Input
             placeholder={t(lang, "search")}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pl-9 pr-9"
+            disabled={!!scannedItem}
           />
+          {search && !scannedItem && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setScannerOpen(true)}
+          title={t(lang, "scanBarcode")}
+          className="shrink-0"
+        >
+          <ScanLine className="w-4 h-4" />
+        </Button>
         {isOwner && branches.length > 0 && (
           <Select value={branchFilter} onValueChange={setBranchFilter}>
             <SelectTrigger className="w-40">
@@ -127,6 +190,23 @@ export default function AuditPage() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Active scan filter badge */}
+      {scannedItem && (
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="gap-1.5 text-sm py-1 px-3 border-primary text-primary bg-primary/5">
+            <ScanLine className="w-3.5 h-3.5" />
+            {scannedItem.name}
+            <button
+              onClick={clearScannedItem}
+              className="ml-1 hover:opacity-70"
+              aria-label="Clear scan filter"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </Badge>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-3">
@@ -170,6 +250,23 @@ export default function AuditPage() {
           ))}
         </div>
       )}
+
+      {/* Barcode Scanner Dialog */}
+      <Dialog open={scannerOpen} onOpenChange={setScannerOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ScanLine className="w-5 h-5" />
+              {t(lang, "scanBarcode")}
+            </DialogTitle>
+          </DialogHeader>
+          <BarcodeScanner
+            onScan={handleBarcodeScan}
+            onClose={() => setScannerOpen(false)}
+            label={t(lang, "scanToFilter")}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
