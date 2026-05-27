@@ -42,6 +42,99 @@ function toCSV(rows: Record<string, unknown>[], headers: string[]): string {
   return csvRows.join("\n");
 }
 
+const translations = {
+  fr: {
+    // Report Titles
+    dailyReport: "Rapport Journalier",
+    weeklyReport: "Rapport Hebdomadaire",
+    missingReport: "Rapport des Articles Manquants",
+    damagedReport: "Rapport des Articles Endommagés",
+    branchActivityReport: "Rapport d'Activité par Succursale",
+    genericReport: "Rapport",
+
+    // Metadata
+    generated: "Généré le",
+    branch: "Succursale",
+    
+    // Headers / Fields
+    id: "ID",
+    itemName: "Nom de l'article",
+    branchName: "Succursale",
+    userName: "Utilisateur",
+    type: "Type",
+    quantity: "Quantité",
+    unit: "Unité",
+    note: "Note",
+    createdAt: "Date de création",
+
+    // Branch activity headers
+    movementCount: "Nombre de mouvements",
+    totalStockIn: "Total des entrées",
+    totalUsed: "Total utilisé",
+    totalDamaged: "Total endommagé",
+    totalMissing: "Total manquant",
+
+    // Movement types
+    stock_in: "Entrée de stock",
+    used_in_production: "Utilisé en production",
+    sold: "Vendu",
+    damaged: "Endommagé",
+    missing_lost: "Manquant / Perdu",
+    returned: "Retourné",
+  },
+  en: {
+    // Report Titles
+    dailyReport: "Daily Report",
+    weeklyReport: "Weekly Report",
+    missingReport: "Missing / Lost Report",
+    damagedReport: "Damaged Goods Report",
+    branchActivityReport: "Branch Activity Report",
+    genericReport: "Report",
+
+    // Metadata
+    generated: "Generated on",
+    branch: "Branch",
+
+    // Headers / Fields
+    id: "ID",
+    itemName: "Item Name",
+    branchName: "Branch",
+    userName: "User",
+    type: "Type",
+    quantity: "Quantity",
+    unit: "Unit",
+    note: "Note",
+    createdAt: "Created At",
+
+    // Branch activity headers
+    movementCount: "Movement Count",
+    totalStockIn: "Total Stock In",
+    totalUsed: "Total Used",
+    totalDamaged: "Total Damaged",
+    totalMissing: "Total Missing",
+
+    // Movement types
+    stock_in: "Stock In",
+    used_in_production: "Used in Production",
+    sold: "Sold",
+    damaged: "Damaged",
+    missing_lost: "Missing / Lost",
+    returned: "Returned",
+  }
+};
+
+function formatDate(date: Date | null | undefined, locale: string): string {
+  if (!date) return "";
+  return date.toLocaleString(locale, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 router.get(["/reports", "/reports/download"], requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const currentUser = await getCurrentUser(req.clerkUserId);
@@ -52,7 +145,13 @@ router.get(["/reports", "/reports/download"], requireAuth, async (req: AuthedReq
     }
 
     const query = req.query as Record<string, string | undefined>;
-    const { type, format, dateFrom, dateTo } = query;
+    const { type, format, dateFrom, dateTo, startDate, endDate, lang } = query;
+    const effectiveDateFrom = dateFrom || startDate;
+    const effectiveDateTo = dateTo || endDate;
+
+    const isFr = String(lang || "").toLowerCase().startsWith("fr");
+    const t = isFr ? translations.fr : translations.en;
+    const locale = isFr ? "fr-FR" : "en-US";
 
     if (!type || !format) {
       return res.status(400).json({ error: "type and format are required" });
@@ -77,9 +176,9 @@ router.get(["/reports", "/reports/download"], requireAuth, async (req: AuthedReq
     startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0, 0, 0, 0);
 
     // Compute dateFrom/dateTo window (explicit override or per-type default)
-    let windowStart: Date | null = dateFrom ? new Date(dateFrom) : null;
+    let windowStart: Date | null = effectiveDateFrom ? new Date(effectiveDateFrom) : null;
     let windowEnd: Date | null = null;
-    if (dateTo) { windowEnd = new Date(dateTo); windowEnd.setHours(23, 59, 59, 999); }
+    if (effectiveDateTo) { windowEnd = new Date(effectiveDateTo); windowEnd.setHours(23, 59, 59, 999); }
 
     if (!windowStart) {
       if (type === "daily") windowStart = startOfDay;
@@ -135,13 +234,13 @@ router.get(["/reports", "/reports/download"], requireAuth, async (req: AuthedReq
       // print: returns printable HTML (open in new tab → browser print dialog → save as PDF)
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>BakeryStock Branch Activity Report</title>
+<title>BakeryStock ${escapeHtml(t.branchActivityReport)}</title>
 <style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#B45309}
 table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:12px}
 th{background:#F59E0B;color:white}tr:nth-child(even){background:#FEF3C7}</style></head>
-<body><h1>Branch Activity Report</h1>
-<p>Generated: ${new Date().toLocaleString()}</p>
-<table><thead><tr>${activityHeaders.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+<body><h1>${escapeHtml(t.branchActivityReport)}</h1>
+<p>${escapeHtml(t.generated)}: ${formatDate(new Date(), locale)}</p>
+<table><thead><tr>${activityHeaders.map((h) => `<th>${escapeHtml(t[h as keyof typeof t] ?? h)}</th>`).join("")}</tr></thead>
 <tbody>${activityRows.map((r) => `<tr>
 <td>${escapeHtml(r.branchName)}</td>
 <td>${escapeHtml(String(r.movementCount))}</td>
@@ -196,11 +295,11 @@ th{background:#F59E0B;color:white}tr:nth-child(even){background:#FEF3C7}</style>
 
     // print: printable HTML — all DB values HTML-escaped; open in new tab → browser print → save as PDF
     const reportTitle = {
-      daily: "Daily Report",
-      weekly: "Weekly Report",
-      missing: "Missing / Lost Report",
-      damaged: "Damaged Goods Report",
-    }[type] ?? `Report: ${type}`;
+      daily: t.dailyReport,
+      weekly: t.weeklyReport,
+      missing: t.missingReport,
+      damaged: t.damagedReport,
+    }[type] ?? `${t.genericReport}: ${type}`;
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.send(`<!DOCTYPE html>
@@ -219,20 +318,20 @@ th{background:#F59E0B;color:white}tr:nth-child(even){background:#FEF3C7}</style>
 </head>
 <body>
   <h1>${escapeHtml(reportTitle)}</h1>
-  <p>Generated: ${new Date().toLocaleString()}</p>
+  <p>${escapeHtml(t.generated)}: ${formatDate(new Date(), locale)}</p>
   <table>
-    <thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+    <thead><tr>${headers.map((h) => `<th>${escapeHtml(t[h as keyof typeof t] ?? h)}</th>`).join("")}</tr></thead>
     <tbody>
       ${movements.map((m) => `<tr>
         <td>${m.id}</td>
         <td>${escapeHtml(m.itemName)}</td>
         <td>${escapeHtml(m.branchName)}</td>
         <td>${escapeHtml(m.userName)}</td>
-        <td>${escapeHtml(m.type)}</td>
+        <td>${escapeHtml(t[m.type as keyof typeof t] ?? m.type)}</td>
         <td>${escapeHtml(m.quantity)}</td>
         <td>${escapeHtml(m.unit)}</td>
         <td>${escapeHtml(m.note)}</td>
-        <td>${m.createdAt?.toISOString() ?? ""}</td>
+        <td>${formatDate(m.createdAt, locale)}</td>
       </tr>`).join("")}
     </tbody>
   </table>

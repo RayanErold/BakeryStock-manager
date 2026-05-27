@@ -113,6 +113,7 @@ export default function ReportsScreen() {
         format,
         startDate,
         endDate,
+        lang: language,
       });
 
       if (selectedBranchId) {

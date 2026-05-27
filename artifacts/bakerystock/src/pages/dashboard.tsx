@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppContext } from "@/contexts/AppContext";
@@ -5,6 +6,7 @@ import { t } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Package,
   AlertTriangle,
@@ -15,6 +17,11 @@ import {
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+
+interface Branch {
+  id: number;
+  name: string;
+}
 
 interface DashboardData {
   totalItems: number;
@@ -106,18 +113,50 @@ export default function Dashboard() {
   const { data: user } = useCurrentUser();
   const isOwner = user?.role === "owner";
 
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("all");
+
+  const { data: branches = [] } = useQuery<Branch[]>({
+    queryKey: ["branches"],
+    queryFn: () => api.get<Branch[]>("/branches"),
+    enabled: isOwner,
+  });
+
   const { data, isLoading } = useQuery<DashboardData>({
-    queryKey: ["dashboard"],
-    queryFn: () => api.get<DashboardData>("/dashboard"),
+    queryKey: ["dashboard", selectedBranchId],
+    queryFn: () => {
+      const url = selectedBranchId !== "all" ? `/dashboard?branchId=${selectedBranchId}` : "/dashboard";
+      return api.get<DashboardData>(url);
+    },
   });
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t(lang, "dashboard")}</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">
-          {lang === "fr" ? "Vue d'ensemble en temps réel" : "Real-time overview"}
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{t(lang, "dashboard")}</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            {lang === "fr" ? "Vue d'ensemble en temps réel" : "Real-time overview"}
+          </p>
+        </div>
+
+        {isOwner && (
+          <div className="w-full sm:w-64 flex items-center gap-2">
+            <span className="text-sm font-medium shrink-0 text-muted-foreground">
+              {lang === "fr" ? "Succursale:" : "Branch:"}
+            </span>
+            <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t(lang, "allBranches")}</SelectItem>
+                {branches.map((b) => (
+                  <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {/* Stats */}
