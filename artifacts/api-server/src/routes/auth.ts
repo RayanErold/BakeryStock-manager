@@ -201,10 +201,17 @@ router.get("/auth/find-by-email", async (req: Request, res: Response) => {
   try {
     const { email } = req.query as Record<string, string | undefined>;
     if (!email?.trim()) return res.status(400).json({ error: "email is required" });
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Ensure the default guest owner exists/is seeded in database
+    if (normalizedEmail === "owner@bakerystock.com") {
+      await getOrCreateDefaultUser();
+    }
+
     const [user] = await db
       .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role, organizationId: usersTable.organizationId })
       .from(usersTable)
-      .where(eq(usersTable.email, email.trim().toLowerCase()))
+      .where(eq(usersTable.email, normalizedEmail))
       .limit(1);
     if (!user) return res.status(404).json({ error: "No account found with that email" });
     return res.json(user);
