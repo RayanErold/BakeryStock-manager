@@ -3,7 +3,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import type { InventoryItem } from "@workspace/api-client-react";
-import { t } from "@/constants/i18n";
+import { useTranslation } from "@/constants/i18n";
 
 interface InventoryCardProps {
   item: InventoryItem;
@@ -11,6 +11,7 @@ interface InventoryCardProps {
 
 export function InventoryCard({ item }: InventoryCardProps) {
   const colors = useColors();
+  const { t } = useTranslation();
   const isLow = item.isLowStock;
   const statusColor = isLow ? colors.destructive : colors.success;
 

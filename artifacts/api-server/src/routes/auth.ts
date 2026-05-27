@@ -31,20 +31,22 @@ async function getOrCreateDefaultUser(): Promise<{ clerkId: string; organization
     if (user) return user;
   }
 
-  const [first] = await db
+  // Look for any existing user with email 'owner@bakerystock.com'
+  const [existingGuest] = await db
     .select({ clerkId: usersTable.clerkId, organizationId: usersTable.organizationId })
     .from(usersTable)
+    .where(eq(usersTable.email, "owner@bakerystock.com"))
     .limit(1);
 
-  if (first) {
-    cachedDefaultClerkId = first.clerkId;
-    return first;
+  if (existingGuest) {
+    cachedDefaultClerkId = existingGuest.clerkId;
+    return existingGuest;
   }
 
-  const orgId = crypto.randomUUID();
+  const orgId = "ead422c4-4889-4c91-be13-a3606943ddeb";
   const [created] = await db
     .insert(usersTable)
-    .values({ clerkId: "default_owner", name: "Owner", email: "owner@bakerystock.local", role: "owner", organizationId: orgId })
+    .values({ clerkId: "default_owner", name: "Guest Owner", email: "owner@bakerystock.com", role: "owner", organizationId: orgId })
     .returning();
   cachedDefaultClerkId = created.clerkId;
   return { clerkId: created.clerkId, organizationId: created.organizationId };

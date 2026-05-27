@@ -18,13 +18,14 @@ import { useBranch } from "@/context/BranchContext";
 import { BranchSelector } from "@/components/BranchSelector";
 import { AlertCard } from "@/components/AlertCard";
 import { EmptyState } from "@/components/EmptyState";
-import { t } from "@/constants/i18n";
+import { useTranslation } from "@/constants/i18n";
 
 export default function AlertsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { selectedBranchId } = useBranch();
   const isWeb = Platform.OS === "web";
+  const { t } = useTranslation();
 
   const {
     data: items,
@@ -34,7 +35,7 @@ export default function AlertsScreen() {
     error,
   } = useListLowStockItems(
     { branchId: selectedBranchId ?? undefined },
-    { query: { refetchInterval: 30000 } }
+    { query: { refetchInterval: 30000 } as any }
   );
 
   const topPadding = isWeb ? 67 : insets.top;

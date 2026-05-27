@@ -4,13 +4,14 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { useColors } from "@/hooks/useColors";
 import { useListBranches } from "@workspace/api-client-react";
 import { useBranch } from "@/context/BranchContext";
-import { t } from "@/constants/i18n";
+import { useTranslation } from "@/constants/i18n";
 
 export function BranchSelector() {
   const colors = useColors();
   const [open, setOpen] = useState(false);
   const { selectedBranchId, setSelectedBranchId } = useBranch();
   const { data: branches } = useListBranches();
+  const { t } = useTranslation();
 
   const selected = branches?.find((b) => b.id === selectedBranchId);
 
@@ -32,7 +33,7 @@ export function BranchSelector() {
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
           <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.sheetTitle, { color: colors.foreground, fontFamily: "Outfit_700Bold" }]}>
-              Choisir une succursale
+              {t("chooseBranch")}
             </Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               <Pressable

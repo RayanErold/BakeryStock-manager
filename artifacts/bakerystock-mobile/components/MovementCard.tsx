@@ -3,7 +3,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import type { StockMovement } from "@workspace/api-client-react";
-import { movementTypeLabels } from "@/constants/i18n";
+import { useTranslation } from "@/constants/i18n";
 
 interface MovementCardProps {
   movement: StockMovement;
@@ -31,6 +31,7 @@ function formatTime(dateStr: string) {
 
 export function MovementCard({ movement }: MovementCardProps) {
   const colors = useColors();
+  const { getMovementTypeLabel } = useTranslation();
   const typeInfo = typeColors[movement.type] ?? { bg: colors.primary, icon: "activity" as const };
   const isPositive = movement.type === "stock_in" || movement.type === "returned";
 
@@ -45,7 +46,7 @@ export function MovementCard({ movement }: MovementCardProps) {
           {movement.itemName ?? "Article inconnu"}
         </Text>
         <Text style={[styles.type, { color: colors.mutedForeground, fontFamily: "Outfit_400Regular" }]}>
-          {movementTypeLabels[movement.type] ?? movement.type}
+          {getMovementTypeLabel(movement.type)}
         </Text>
       </View>
 

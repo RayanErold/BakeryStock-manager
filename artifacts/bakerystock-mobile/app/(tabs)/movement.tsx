@@ -22,12 +22,14 @@ import {
   useListInventoryItems,
 } from "@workspace/api-client-react";
 import type { InventoryItem } from "@workspace/api-client-react";
-import { movementTypes, t } from "@/constants/i18n";
+import { useTranslation } from "@/constants/i18n";
 import { useQueryClient } from "@tanstack/react-query";
 import { useOfflineQueue } from "@/context/OfflineQueueContext";
 
 export default function MovementScreen() {
   const colors = useColors();
+  const { t, getMovementTypes } = useTranslation();
+  const movementTypes = getMovementTypes();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const isWeb = Platform.OS === "web";

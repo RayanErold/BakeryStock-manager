@@ -14,6 +14,7 @@ import {
   ChevronRight,
   LogOut,
   Palette,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,7 @@ const navItems = (isOwner: boolean) => [
         { icon: FileBarChart, key: "reports" as const, path: "/reports" },
       ]
     : []),
+  { icon: HelpCircle, key: "guide" as const, path: "/guide" },
 ];
 
 interface LayoutProps {
@@ -65,7 +67,7 @@ export function Layout({ children, user, onSignOut }: LayoutProps) {
           </div>
           <div className="min-w-0">
             <div className="font-bold text-sidebar-foreground text-sm leading-tight">BakeryStock</div>
-            <div className="text-xs text-muted-foreground truncate">{user.branch?.name ?? "All Branches"}</div>
+            <div className="text-xs text-muted-foreground truncate">{user?.branch?.name ?? "All Branches"}</div>
           </div>
         </div>
       </div>
@@ -95,7 +97,7 @@ export function Layout({ children, user, onSignOut }: LayoutProps) {
 
       <div className="p-3 border-t border-sidebar-border space-y-2">
         <div className="px-3 py-2">
-          <div className="text-xs font-medium text-sidebar-foreground truncate">{user.name}</div>
+          <div className="text-xs font-medium text-sidebar-foreground truncate">{user?.name ?? "Guest"}</div>
           <div className="flex items-center gap-1 mt-0.5">
             <Badge
               variant="outline"

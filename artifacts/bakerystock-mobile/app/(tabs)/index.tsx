@@ -16,10 +16,11 @@ import { useGetDashboardSummary, useListStockMovements } from "@workspace/api-cl
 import { useBranch } from "@/context/BranchContext";
 import { useOfflineQueue } from "@/context/OfflineQueueContext";
 import { BranchSelector } from "@/components/BranchSelector";
+import { LanguageSelector } from "@/components/LanguageSelector";
 import { StatCard } from "@/components/StatCard";
 import { MovementCard } from "@/components/MovementCard";
 import { EmptyState } from "@/components/EmptyState";
-import { t } from "@/constants/i18n";
+import { useTranslation } from "@/constants/i18n";
 
 function formatLastSynced(date: Date): string {
   const diff = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -35,6 +36,7 @@ export default function DashboardScreen() {
   const { selectedBranchId } = useBranch();
   const { isOnline, pendingCount, lastSyncedAt, isSyncing, syncNow } = useOfflineQueue();
   const isWeb = Platform.OS === "web";
+  const { t } = useTranslation();
 
   const {
     data: summary,
@@ -43,7 +45,7 @@ export default function DashboardScreen() {
     isRefetching: refreshingDash,
   } = useGetDashboardSummary(
     selectedBranchId ? { branchId: selectedBranchId } : {},
-    { query: { refetchInterval: isOnline ? 30000 : undefined } }
+    { query: { refetchInterval: isOnline ? 30000 : undefined } as any }
   );
 
   const {
@@ -53,7 +55,7 @@ export default function DashboardScreen() {
     isRefetching: refreshingMoves,
   } = useListStockMovements(
     { branchId: selectedBranchId ?? undefined, limit: 10 },
-    { query: { refetchInterval: isOnline ? 30000 : undefined } }
+    { query: { refetchInterval: isOnline ? 30000 : undefined } as any }
   );
 
   const isRefreshing = refreshingDash || refreshingMoves;
@@ -80,7 +82,10 @@ export default function DashboardScreen() {
               {t("dashboard")}
             </Text>
           </View>
-          <BranchSelector />
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <LanguageSelector />
+            <BranchSelector />
+          </View>
         </View>
       </View>
 

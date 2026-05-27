@@ -14,6 +14,7 @@ import BranchesPage from "@/pages/branches";
 import StaffPage from "@/pages/staff";
 import ReportsPage from "@/pages/reports";
 import WelcomePage from "@/pages/welcome";
+import GuidePage from "@/pages/guide";
 import NotFound from "@/pages/not-found";
 import { useAppContext } from "@/contexts/AppContext";
 import { t } from "@/lib/i18n";
@@ -84,6 +85,7 @@ function AppRoutes() {
       <Route path="/branches"><AuthGuard ownerOnly><BranchesPage /></AuthGuard></Route>
       <Route path="/staff"><AuthGuard ownerOnly><StaffPage /></AuthGuard></Route>
       <Route path="/reports"><AuthGuard ownerOnly><ReportsPage /></AuthGuard></Route>
+      <Route path="/guide"><AuthGuard><GuidePage /></AuthGuard></Route>
       <Route component={NotFound} />
     </Switch>
   );

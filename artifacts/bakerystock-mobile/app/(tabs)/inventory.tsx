@@ -18,7 +18,7 @@ import { useBranch } from "@/context/BranchContext";
 import { BranchSelector } from "@/components/BranchSelector";
 import { InventoryCard } from "@/components/InventoryCard";
 import { EmptyState } from "@/components/EmptyState";
-import { t } from "@/constants/i18n";
+import { useTranslation } from "@/constants/i18n";
 
 export default function InventoryScreen() {
   const colors = useColors();
@@ -26,6 +26,7 @@ export default function InventoryScreen() {
   const { selectedBranchId } = useBranch();
   const [search, setSearch] = useState("");
   const isWeb = Platform.OS === "web";
+  const { t } = useTranslation();
 
   const {
     data: items,
@@ -37,7 +38,7 @@ export default function InventoryScreen() {
       branchId: selectedBranchId ?? undefined,
       search: search.length >= 2 ? search : undefined,
     },
-    { query: { refetchInterval: 30000 } }
+    { query: { refetchInterval: 30000 } as any }
   );
 
   const topPadding = isWeb ? 67 : insets.top;

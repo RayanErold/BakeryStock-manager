@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -36,40 +36,66 @@ router.post("/seed", async (req: Request, res: Response) => {
 
     // Once any user exists, also require an authenticated owner to prevent re-seeding.
     const existingUsers = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
+    let callerOrgId: string | null = null;
     if (existingUsers.length > 0) {
       const clerkUserId: string | undefined =
         (req as Request & { clerkUserId?: string }).clerkUserId ??
         (req.headers["x-dev-user-id"] as string | undefined);
       if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
       const [caller] = await db
-        .select({ role: usersTable.role })
+        .select({ role: usersTable.role, organizationId: usersTable.organizationId })
         .from(usersTable)
         .where(eq(usersTable.clerkId, clerkUserId))
         .limit(1);
       if (!caller || caller.role !== "owner") {
         return res.status(403).json({ error: "Forbidden: owner only" });
       }
+      callerOrgId = caller.organizationId;
     }
 
-    const existingBranches = await db.select({ id: branchesTable.id }).from(branchesTable).limit(1);
-    if (existingBranches.length > 0) {
-      return res.json({ message: "Already seeded" });
+    // Clean up existing demo data to ensure absolute idempotence
+    const demoBranchRows = await db
+      .select({ id: branchesTable.id })
+      .from(branchesTable)
+      .where(inArray(branchesTable.name, ["Douala Central Bakery", "Yaoundé Bakery"]));
+    const demoBranchIds = demoBranchRows.map(b => b.id);
+
+    const demoUserRows = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(inArray(usersTable.email, ["pierre@bakerstock.cm", "carine@bakerystock.cm", "paul@bakerystock.cm"]));
+    const demoUserIds = demoUserRows.map(u => u.id);
+
+    if (demoBranchIds.length > 0) {
+      await db.delete(auditLogsTable).where(inArray(auditLogsTable.branchId, demoBranchIds));
+      await db.delete(stockMovementsTable).where(inArray(stockMovementsTable.branchId, demoBranchIds));
+      await db.delete(inventoryItemsTable).where(inArray(inventoryItemsTable.branchId, demoBranchIds));
+    }
+    if (demoUserIds.length > 0) {
+      await db.delete(auditLogsTable).where(inArray(auditLogsTable.userId, demoUserIds));
+      await db.delete(stockMovementsTable).where(inArray(stockMovementsTable.userId, demoUserIds));
+    }
+    if (demoUserIds.length > 0) {
+      await db.delete(usersTable).where(inArray(usersTable.id, demoUserIds));
+    }
+    if (demoBranchIds.length > 0) {
+      await db.delete(branchesTable).where(inArray(branchesTable.id, demoBranchIds));
     }
 
     const [douala, yaounde] = await db
       .insert(branchesTable)
       .values([
-        { name: "Douala Central Bakery", city: "Douala", manager: "Jean Mbarga", phone: "+237 655 123 456" },
-        { name: "Yaoundé Bakery", city: "Yaoundé", manager: "Marie Nkomo", phone: "+237 677 987 654" },
+        { name: "Douala Central Bakery", city: "Douala", manager: "Jean Mbarga", phone: "+237 655 123 456", organizationId: callerOrgId },
+        { name: "Yaoundé Bakery", city: "Yaoundé", manager: "Marie Nkomo", phone: "+237 677 987 654", organizationId: callerOrgId },
       ])
       .returning();
 
     const [owner, staff1, staff2] = await db
       .insert(usersTable)
       .values([
-        { clerkId: "seed_owner_001", name: "Pierre Fotso", email: "pierre@bakerstock.cm", role: "owner" as const, branchId: douala.id },
-        { clerkId: "seed_staff_001", name: "Carine Biya", email: "carine@bakerystock.cm", role: "staff" as const, branchId: douala.id },
-        { clerkId: "seed_staff_002", name: "Paul Eto", email: "paul@bakerystock.cm", role: "staff" as const, branchId: yaounde.id },
+        { clerkId: "seed_owner_001", name: "Pierre Fotso", email: "pierre@bakerstock.cm", role: "owner" as const, branchId: douala.id, organizationId: callerOrgId },
+        { clerkId: "seed_staff_001", name: "Carine Biya", email: "carine@bakerystock.cm", role: "staff" as const, branchId: douala.id, organizationId: callerOrgId },
+        { clerkId: "seed_staff_002", name: "Paul Eto", email: "paul@bakerystock.cm", role: "staff" as const, branchId: yaounde.id, organizationId: callerOrgId },
       ])
       .returning();
 

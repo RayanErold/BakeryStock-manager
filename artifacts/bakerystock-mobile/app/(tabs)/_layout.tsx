@@ -16,7 +16,7 @@ function AlertBadge() {
   const { selectedBranchId } = useBranch();
   const { data } = useListLowStockItems(
     { branchId: selectedBranchId ?? undefined },
-    { query: { refetchInterval: 60000 } }
+    { query: { refetchInterval: 60000 } as any }
   );
   return data && data.length > 0 ? <>{String(data.length)}</> : null;
 }
@@ -25,7 +25,7 @@ function NativeTabLayout() {
   const { selectedBranchId } = useBranch();
   const { data: alerts } = useListLowStockItems(
     { branchId: selectedBranchId ?? undefined },
-    { query: { refetchInterval: 60000 } }
+    { query: { refetchInterval: 60000 } as any }
   );
   const alertCount = alerts?.length ?? 0;
 
@@ -47,6 +47,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "exclamationmark.triangle", selected: "exclamationmark.triangle.fill" }} />
         <Label>Alertes</Label>
         {alertCount > 0 && <>{String(alertCount)}</>}
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="reports">
+        <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
+        <Label>Rapports</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -141,6 +145,18 @@ function ClassicTabLayout() {
               <SymbolView name="exclamationmark.triangle.fill" tintColor={color} size={24} />
             ) : (
               <Feather name="alert-triangle" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="reports"
+        options={{
+          title: "Rapports",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="doc.text.fill" tintColor={color} size={24} />
+            ) : (
+              <Feather name="file-text" size={22} color={color} />
             ),
         }}
       />
