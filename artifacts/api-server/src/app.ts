@@ -37,7 +37,7 @@ const distPath = path.resolve(__dirname, "../../bakerystock/dist");
 app.use(express.static(distPath));
 
 // Fallback to index.html for SPA routes (e.g. /dashboard)
-app.get("*", (req, res, next) => {
+app.get("(.*)", (req, res, next) => {
   if (req.path.startsWith("/api")) {
     return next();
   }
