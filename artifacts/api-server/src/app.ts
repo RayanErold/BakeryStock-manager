@@ -3,6 +3,11 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app: Express = express();
 
@@ -24,7 +29,19 @@ app.use(cors({ credentials: true, origin: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Mount API routes
 app.use("/api", router);
-app.use("/", router);
+
+// Serve static assets in production
+const distPath = path.resolve(__dirname, "../../bakerystock/dist");
+app.use(express.static(distPath));
+
+// Fallback to index.html for SPA routes (e.g. /dashboard)
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api")) {
+    return next();
+  }
+  res.sendFile(path.join(distPath, "index.html"));
+});
 
 export default app;
