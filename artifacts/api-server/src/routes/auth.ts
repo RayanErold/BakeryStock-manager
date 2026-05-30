@@ -54,7 +54,9 @@ async function getOrCreateDefaultUser(): Promise<{ clerkId: string; organization
 
 const requireAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const headerUserId = req.headers["x-user-id"] as string | undefined;
+    const headerUserId = (req.headers["x-user-id"] as string | undefined) || 
+                         (req.query["x-user-id"] as string | undefined) ||
+                         (req.query["userId"] as string | undefined);
     if (headerUserId) {
       const id = parseInt(headerUserId, 10);
       const [user] = await db

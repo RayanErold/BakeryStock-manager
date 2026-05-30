@@ -55,7 +55,7 @@ const translations = {
     // Metadata
     generated: "Généré le",
     branch: "Succursale",
-    
+
     // Headers / Fields
     id: "ID",
     itemName: "Nom de l'article",
@@ -166,8 +166,8 @@ router.get(["/reports", "/reports/download"], requireAuth, async (req: AuthedReq
       currentUser.role === "staff"
         ? currentUser.branchId!
         : query.branchId
-        ? parseInt(query.branchId)
-        : null;
+          ? parseInt(query.branchId)
+          : null;
 
     // ── Time window helpers ────────────────────────────────────────────────
     const now = new Date();

@@ -8,6 +8,7 @@ import auditRouter from "./audit";
 import dashboardRouter from "./dashboard";
 import reportsRouter from "./reports";
 import seedRouter from "./seed";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(auditRouter);
 router.use(dashboardRouter);
 router.use(reportsRouter);
 router.use(seedRouter);
+router.use(notificationsRouter);
 
 export default router;

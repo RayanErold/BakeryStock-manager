@@ -1,10 +1,11 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { db } from "@workspace/db";
-import { stockMovementsTable, auditLogsTable, inventoryItemsTable, branchesTable, usersTable } from "@workspace/db";
+import { stockMovementsTable, auditLogsTable, inventoryItemsTable, branchesTable, usersTable, notificationsTable } from "@workspace/db";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { requireAuth } from "./auth";
 import type { AuthedRequest } from "../types/express";
+import { sendNotificationToUser } from "./notifications";
 
 const router = Router();
 
@@ -140,6 +141,52 @@ router.post("/movements", requireAuth, async (req: AuthedRequest, res: Response)
     await db.update(inventoryItemsTable).set({ quantity: newQty.toFixed(3), updatedAt: new Date() }).where(eq(inventoryItemsTable.id, itemId));
 
     await db.insert(auditLogsTable).values({ userId: currentUser.id, branchId, itemId, movementType: type, quantityChange: String(parsedQty), note: note ?? null });
+
+    // Check if the new quantity is below or equal to the minimum threshold
+    const minThresholdVal = parseFloat(item.minThreshold);
+    if (newQty <= minThresholdVal) {
+      try {
+        const staffInBranch = await db
+          .select()
+          .from(usersTable)
+          .where(eq(usersTable.branchId, branchId));
+
+        const owners = await db
+          .select()
+          .from(usersTable)
+          .where(and(eq(usersTable.role, "owner"), eq(usersTable.organizationId, currentUser.organizationId ?? "")));
+
+        const recipientsMap = new Map<number, typeof currentUser>();
+        staffInBranch.forEach(u => recipientsMap.set(u.id, u));
+        owners.forEach(u => recipientsMap.set(u.id, u));
+
+        const title = `Low Stock Alert: ${item.name}`;
+        const message = `The item "${item.name}" has dropped to ${newQty.toFixed(2)} ${item.unit} (minimum threshold: ${item.minThreshold} ${item.unit}).`;
+
+        for (const recipient of recipientsMap.values()) {
+          const [notif] = await db
+            .insert(notificationsTable)
+            .values({
+              userId: recipient.id,
+              branchId,
+              type: "low_stock",
+              title,
+              message,
+              isRead: false,
+              metadata: {
+                itemId: item.id,
+                currentQuantity: newQty.toFixed(3),
+                threshold: item.minThreshold
+              }
+            })
+            .returning();
+
+          sendNotificationToUser(recipient.id, notif);
+        }
+      } catch (triggerErr) {
+        req.log?.error(triggerErr, "Failed to dispatch low-stock notification");
+      }
+    }
 
     return res.status(201).json(movement);
   } catch (err: unknown) {
