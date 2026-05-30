@@ -143,7 +143,7 @@ export function Layout({ children, user, onSignOut }: LayoutProps) {
         })}
       </nav>
 
-      <div className="p-3 border-t border-sidebar-border space-y-2">
+      <div className="p-3 pb-8 lg:pb-3 border-t border-sidebar-border space-y-2">
         <div className="px-3 py-2">
           <div className="text-xs font-medium text-sidebar-foreground truncate">{user?.name ?? "Guest"}</div>
           <div className="flex items-center gap-1 mt-0.5">
@@ -256,6 +256,15 @@ export function Layout({ children, user, onSignOut }: LayoutProps) {
               onClick={() => setLang(lang === "en" ? "fr" : "en")}
             >
               <Globe className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={onSignOut}
+              title={lang === "en" ? "Sign Out" : "Déconnexion"}
+            >
+              <LogOut className="w-4 h-4" />
             </Button>
           </div>
         </header>
